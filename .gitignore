@@ -1,0 +1,12 @@
+# .NET and Visual Studio build output
+**/bin/
+**/obj/
+.vs/
+TestResults/
+*.user
+*.suo
+
+# Local temporary files
+**/tmp/
+**/__pycache__/
+*.pyc

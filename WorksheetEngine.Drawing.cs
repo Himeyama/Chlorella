@@ -7,7 +7,7 @@ sealed partial class WorksheetEngine
     sealed record DrawingObject(uint Id, string Kind, string Type, int Row, int Col, double Dx, double Dy, double Width,
         double Height, uint? Fill, uint? Line, string Text, string? Data);
     sealed record TableFilter(int Column, string[] Values);
-    sealed record WorksheetTable(int Top, int Left, int Bottom, int Right, bool Header, TableFilter[]? Filters = null);
+    sealed record WorksheetTable(int Top, int Left, int Bottom, int Right, bool Header, TableFilter[]? Filters = null, string? Name = null, bool Totals = false);
 
     object ShapeView(DrawingObject item, double x, double y) => new
     {
@@ -68,11 +68,12 @@ sealed partial class WorksheetEngine
             }
             (int top, int left, int bottom, int right) = ParseRange(args.GetProperty("range").GetString() ?? "");
             CellRange range = new(top, left, bottom, right);
-            if ((long)(bottom - top + 1) * (right - left + 1) > 100_000 || Current.Merges.Any(m => m.Intersects(range)) ||
+            if (bottom - top + 1 < (table.Header ? 1 : 0) + (table.Totals ? 1 : 0) ||
+                (long)(bottom - top + 1) * (right - left + 1) > 100_000 || Current.Merges.Any(m => m.Intersects(range)) ||
                 Current.Tables.Any(t => t != table && new CellRange(t.Top, t.Left, t.Bottom,
                     t.Right).Intersects(range))) throw new InvalidOperationException("テーブルの範囲が無効か、結合セルまたは別のテーブルと重なっています。");
             TableFilter[]? filters = table.Filters?.Where(filter => filter.Column >= left && filter.Column <= right).ToArray();
-            Current.Tables[Current.Tables.IndexOf(table)] = new(top, left, bottom, right, table.Header, filters);
+            Current.Tables[Current.Tables.IndexOf(table)] = new(top, left, bottom, right, table.Header, filters, table.Name, table.Totals);
             return new { };
         }
         if (command == "insert.table")

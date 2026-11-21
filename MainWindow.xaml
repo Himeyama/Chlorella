@@ -6,6 +6,10 @@
     Title="Chlorella">
     <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
     <Grid x:Name="RootGrid">
+    <Grid.KeyboardAccelerators>
+        <KeyboardAccelerator Key="S" Modifiers="Control" Invoked="SaveAccelerator_Invoked"/>
+        <KeyboardAccelerator Key="O" Modifiers="Control" Invoked="OpenAccelerator_Invoked"/>
+    </Grid.KeyboardAccelerators>
     <Grid.Resources>
         <SolidColorBrush x:Key="MergeAccentBrush" Color="{ThemeResource SystemAccentColor}"/>
         <SolidColorBrush x:Key="SelectionFillBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.2"/>
@@ -118,19 +122,40 @@
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <TitleBar x:Name="AppTitleBar">
+        <TitleBar x:Name="AppTitleBar" Height="40">
+            <TitleBar.Resources>
+                <x:Double x:Key="TitleBarDeactivatedOpacity">1</x:Double>
+                <x:Double x:Key="TitleBarCompactHeight">40</x:Double>
+                <x:Double x:Key="TitleBarExpandedHeight">40</x:Double>
+            </TitleBar.Resources>
             <TitleBar.LeftHeader>
                 <StackPanel Orientation="Horizontal">
-                    <SelectorBar x:Name="RibbonSelector" SelectionChanged="RibbonSelector_SelectionChanged">
-                        <SelectorBarItem Text="ファイル" Tag="File"/>
-                        <SelectorBarItem Text="ホーム" Tag="Home" IsSelected="True"/>
-                        <SelectorBarItem Text="挿入" Tag="Insert"/>
-                        <SelectorBarItem Text="データ" Tag="Data"/>
-                        <SelectorBarItem Text="表示" Tag="View"/>
-                        <SelectorBarItem x:Name="ShapeTab" Text="図形" Tag="Shape" Visibility="Collapsed"/>
+                    <TextBlock Text="自動保存" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <ToggleSwitch x:Name="AutoSaveToggle" OnContent="" OffContent="" MinWidth="0" Width="40" Margin="8,4,0,0"
+                                  VerticalAlignment="Center" Toggled="AutoSaveToggle_Toggled"
+                                  AutomationProperties.Name="自動保存">
+                        <ToggleSwitch.Resources>
+                            <x:Double x:Key="ToggleSwitchPreContentMargin">6</x:Double>
+                            <x:Double x:Key="ToggleSwitchPostContentMargin">6</x:Double>
+                        </ToggleSwitch.Resources>
+                    </ToggleSwitch>
+                    <SelectorBar x:Name="RibbonSelector" Padding="0" Margin="0,3,0,0" VerticalAlignment="Center" SelectionChanged="RibbonSelector_SelectionChanged">
+                        <SelectorBarItem Text="ファイル" Tag="File" Padding="12,5,12,5"/>
+                        <SelectorBarItem Text="ホーム" Tag="Home" IsSelected="True" Padding="12,5,12,5"/>
+                        <SelectorBarItem Text="挿入" Tag="Insert" Padding="12,5,12,5"/>
+                        <SelectorBarItem Text="データ" Tag="Data" Padding="12,5,12,5"/>
+                        <SelectorBarItem Text="表示" Tag="View" Padding="12,5,12,5"/>
+                        <SelectorBarItem x:Name="ShapeTab" Text="図形" Tag="Shape" Visibility="Collapsed" Padding="12,5,12,5"/>
                     </SelectorBar>
                     <Button x:Name="RibbonToggle" Style="{StaticResource ChromeIconButtonStyle}" Click="RibbonToggle_Click" AutomationProperties.Name="リボンを折りたたむ" ToolTipService.ToolTip="リボンを折りたたむ">
                         <FontIcon x:Name="RibbonToggleIcon" Glyph="&#xE70E;" FontSize="16"/>
+                    </Button>
+                    <Button x:Name="FileNameButton" Style="{StaticResource ChromeIconButtonStyle}" Click="FileName_Click"
+                            ToolTipService.ToolTip="ファイル名を変更" AutomationProperties.Name="ファイル名を変更">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock x:Name="FileNameText" Text="ブック.xlsx" MaxWidth="180" TextTrimming="CharacterEllipsis"/>
+                            <TextBlock x:Name="UnsavedMark" Text="●" Visibility="Collapsed" AutomationProperties.Name="未保存の変更あり"/>
+                        </StackPanel>
                     </Button>
                 </StackPanel>
             </TitleBar.LeftHeader>

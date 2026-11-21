@@ -41,7 +41,7 @@ sealed partial class WorksheetEngine
             if (filters.Length == 0) continue;
             Dictionary<int, HashSet<string>> accepted = filters.ToDictionary(filter => filter.Column,
                 filter => new HashSet<string>(filter.Values, StringComparer.OrdinalIgnoreCase));
-            for (int row = table.Top + (table.Header ? 1 : 0); row <= table.Bottom; row++)
+            for (int row = table.Top + (table.Header ? 1 : 0); row <= table.Bottom - (table.Totals ? 1 : 0); row++)
                 if (accepted.Any(filter => !filter.Value.Contains(DisplayCell(sheet, (row, filter.Key)).Text))) hidden.Add(row);
         }
         filteredRowCache[sheet] = hidden;
@@ -64,7 +64,7 @@ sealed partial class WorksheetEngine
         TableFilter? active = (table.Filters ?? []).FirstOrDefault(filter => filter.Column == col);
         HashSet<string>? selected = active is null ? null : new(active.Values, StringComparer.OrdinalIgnoreCase);
         Dictionary<string, (string Label, int Count)> choices = new(StringComparer.OrdinalIgnoreCase);
-        for (int row = table.Top + 1; row <= table.Bottom; row++)
+        for (int row = table.Top + 1; row <= table.Bottom - (table.Totals ? 1 : 0); row++)
         {
             (int, int) key = (row, col);
             string value = DisplayCell(Current, key).Text;

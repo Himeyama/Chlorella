@@ -35,7 +35,7 @@ sealed partial class WorksheetEngine
         WriteXml(zip, $"xl/worksheets/_rels/sheet{sheetIndex + 1}.xml.rels", new XDocument(relationships));
     }
 
-    static void WriteNativeTables(ZipArchive zip, Sheet sheet, int firstTableId)
+    static void WriteNativeTables(ZipArchive zip, Sheet sheet, int firstTableId, HashSet<string> tableNames)
     {
         for (int index = 0; index < sheet.Tables.Count; index++)
         {
@@ -45,21 +45,42 @@ sealed partial class WorksheetEngine
             string[]? headers = NativeTableHeaders(sheet, table);
             bool header = headers is not null;
             headers ??= Enumerable.Range(1, table.Right - table.Left + 1).Select(column => $"Column{column}").ToArray();
-            XElement definition = new(MainNs + "table", new XAttribute("id", id), new XAttribute("name", $"Table{id}"),
-                new XAttribute("displayName", $"Table{id}"), new XAttribute("ref", range), new XAttribute("headerRowCount",
-                    header ? 1 : 0), new XAttribute("totalsRowShown", 0),
-                header ? new XElement(MainNs + "autoFilter", new XAttribute("ref", range), (table.Filters ?? []).Select(filter =>
+            string tableName = table.Name ?? $"Table{id}";
+            if (table.Name is null)
+            {
+                int suffix = id;
+                while (!tableNames.Add(tableName)) tableName = $"Table{++suffix}";
+            }
+            XElement definition = new(MainNs + "table", new XAttribute("id", id), new XAttribute("name", tableName),
+                new XAttribute("displayName", tableName), new XAttribute("ref", range), new XAttribute("headerRowCount",
+                    header ? 1 : 0), new XAttribute("totalsRowShown", table.Totals ? 1 : 0),
+                table.Totals ? new XAttribute("totalsRowCount", 1) : null,
+                header ? new XElement(MainNs + "autoFilter", new XAttribute("ref", $"{Address(table.Top, table.Left)}:{Address(table.Bottom - (table.Totals ? 1 : 0), table.Right)}"), (table.Filters ?? []).Select(filter =>
                     new XElement(MainNs + "filterColumn", new XAttribute("colId", filter.Column - table.Left),
                         new XElement(MainNs + "filters", filter.Values.Any(string.IsNullOrEmpty) ? new XAttribute("blank", 1) : null,
                             filter.Values.Where(value => value.Length > 0).Select(value => new XElement(MainNs + "filter",
                                 new XAttribute("val", value))))))) : null,
                 new XElement(MainNs + "tableColumns", new XAttribute("count", headers.Length), headers.Select((name,
-                    column) => new XElement(MainNs + "tableColumn", new XAttribute("id", column + 1), new XAttribute("name", name)))),
+                    column) => MakeTableColumn(sheet, table, name, column))),
                 new XElement(MainNs + "tableStyleInfo", new XAttribute("name", "TableStyleMedium2"),
                     new XAttribute("showFirstColumn", 0), new XAttribute("showLastColumn", 0),
                         new XAttribute("showRowStripes", 1), new XAttribute("showColumnStripes", 0)));
             WriteXml(zip, $"xl/tables/table{id}.xml", new XDocument(definition));
         }
+    }
+
+    static XElement MakeTableColumn(Sheet sheet, WorksheetTable table, string name, int column)
+    {
+        XElement result = new(MainNs + "tableColumn", new XAttribute("id", column + 1), new XAttribute("name", name));
+        if (!table.Totals) return result;
+        string value = sheet.Cells.GetValueOrDefault((table.Bottom, table.Left + column), "");
+        if (value.StartsWith('='))
+        {
+            result.Add(new XAttribute("totalsRowFunction", "custom"));
+            result.Add(new XElement(MainNs + "totalsRowFormula", value[1..]));
+        }
+        else if (value.Length > 0) result.Add(new XAttribute("totalsRowLabel", value));
+        return result;
     }
 
     // Excel requires unique, nonempty text in header cells. Preserve nonconforming

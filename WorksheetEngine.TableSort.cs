@@ -19,9 +19,10 @@ sealed partial class WorksheetEngine
         CellRange range = new(table.Top, table.Left, table.Bottom, table.Right);
         if (Current.Merges.Any(merge => merge.Intersects(range))) throw new InvalidOperationException("結合セルを含むテーブルは並べ替えできません。");
         int firstRow = table.Top + (table.Header ? 1 : 0);
-        if (firstRow >= table.Bottom) return;
+        int lastRow = table.Bottom - (table.Totals ? 1 : 0);
+        if (firstRow >= lastRow) return;
         List<SortRow> rows = [];
-        for (int row = firstRow; row <= table.Bottom; row++)
+        for (int row = firstRow; row <= lastRow; row++)
         {
             (int, int) key = (row, selectedColumn);
             string raw = Current.Cells.GetValueOrDefault(key, "");
@@ -49,7 +50,7 @@ sealed partial class WorksheetEngine
             pair.Key.Col) && pair.Key.Row >= firstRow).ToDictionary(pair => pair.Key, pair => pair.Value);
         Dictionary<(int Row, int Col), FontStyle> styles = Current.Fonts.Where(pair => range.Contains(pair.Key.Row,
             pair.Key.Col) && pair.Key.Row >= firstRow).ToDictionary(pair => pair.Key, pair => pair.Value);
-        for (int destination = firstRow; destination <= table.Bottom; destination++)
+        for (int destination = firstRow; destination <= lastRow; destination++)
         {
             int source = rows[destination - firstRow].Row;
             for (int col = table.Left; col <= table.Right; col++)

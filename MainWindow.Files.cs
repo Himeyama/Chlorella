@@ -65,7 +65,8 @@ public sealed partial class MainWindow
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
         return Task.CompletedTask;
     });
-    async void Save_Click(object sender, RoutedEventArgs e) => await RunAsync(async () =>
+    async void Save_Click(object sender, RoutedEventArgs e) => await RunAsync(SaveAsync);
+    async Task SaveAsync()
     {
         await CommitInputAsync();
         JsonElement info = await ExecuteAsync("document.inspect", new { });
@@ -77,7 +78,7 @@ public sealed partial class MainWindow
         JsonElement saved = await ExecuteAsync("file.save", new { });
         dirty = false;
         await ShowSaveResultAsync(saved);
-    });
+    }
     async void Export_Click(object sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         string? path = await EmbeddedFilePicker.PickPageAsync(RootGrid, "エクスポート",
@@ -95,7 +96,8 @@ public sealed partial class MainWindow
         await ExecuteAsync(command, new { path });
         SetStatus("エクスポートしました。");
     });
-    async void RenameFile_Click(object sender, RoutedEventArgs e) => await RunAsync(async () =>
+    async void RenameFile_Click(object sender, RoutedEventArgs e) => await RunAsync(RenameFileAsync);
+    async Task RenameFileAsync()
     {
         await CommitInputAsync();
         JsonElement info = await ExecuteAsync("document.inspect", new { });
@@ -112,8 +114,11 @@ public sealed partial class MainWindow
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         await SendAsync("file.rename", new { name = input.Text.Trim() });
+        savedPath = Path.Combine(Path.GetDirectoryName(path) ?? "", input.Text.Trim());
+        displayFileName = Path.GetFileName(savedPath);
+        UpdateFileName();
         SetStatus("ファイル名を変更しました。");
-    });
+    }
     async void CopyPath_Click(object sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         JsonElement info = await ExecuteAsync("document.inspect", new { });
@@ -123,14 +128,28 @@ public sealed partial class MainWindow
         Clipboard.SetContent(package);
         SetStatus("パスをコピーしました。");
     });
-    async void Open_Click(object sender, RoutedEventArgs e)
+    async void Open_Click(object sender, RoutedEventArgs e) => await RunAsync(OpenAsync);
+    async Task OpenAsync()
     {
-        await RunAsync(async () =>
-        {
             if (dirty && !await ConfirmDiscardAsync()) return;
-            string? path = await EmbeddedFilePicker.PickPageAsync(RootGrid, "開く", [new("Excel ブック", [".xlsx"])]);
+            if (filePageActive) return;
+            filePageActive = true;
+            string? path;
+            try
+            {
+                path = await EmbeddedFilePicker.PickPageAsync(RootGrid, "開く", [new("Excel ブック", [".xlsx"])]);
+            }
+            finally
+            {
+                filePageActive = false;
+                if (dirty) ScheduleAutoSave();
+            }
             if (path is null) return;
             JsonElement result = await ExecuteAsync("file.open", new { path });
+            bool external = result.TryGetProperty("imported", out JsonElement imported) && imported.ValueKind == JsonValueKind.True;
+            savedPath = external ? null : path;
+            displayFileName = Path.GetFileName(path);
+            if (external && AutoSaveToggle.IsOn) AutoSaveToggle.IsOn = false;
             objectClipboard = null;
             objectClipboardToken = null;
             copiedCells = null;
@@ -141,7 +160,7 @@ public sealed partial class MainWindow
             dirty = false;
             firstRow = 1;
             await RefreshAsync();
-            if (result.TryGetProperty("imported", out JsonElement imported) && imported.ValueKind == JsonValueKind.True)
+            if (external)
             {
                 int tables = result.TryGetProperty("importedTables", out JsonElement importedTables) ? importedTables.GetInt32() : 0;
                 int skipped = result.TryGetProperty("skippedTables", out JsonElement skippedTables) ? skippedTables.GetInt32() : 0;
@@ -153,11 +172,13 @@ public sealed partial class MainWindow
                     out JsonElement skippedFilters) ? skippedFilters.GetInt32() : 0;
                 bool modified = result.TryGetProperty("modified",
                     out JsonElement modifiedValue) && modifiedValue.ValueKind == JsonValueKind.True;
+                SetStatus("Excel ブックを読み込みました。保存するときは別の名前を指定してください。");
+                if (!modified && skipped == 0 && skippedConditions == 0 && skippedObjects == 0) return;
                 string origin = modified ? "このブックは別のアプリで変更されています。Chlorella 専用の追加データは使用せず、標準形式から読み込みます。" : "";
                 ContentDialog notice = new()
                 {
                     XamlRoot = RootGrid.XamlRoot,
-                    Title = "Excel ブックを読み込みました",
+                    Title = "Excel ブックの読み込みについて",
                     Content = $"{origin}セルの値、数式、結合、テーブル {tables} 件、図形・画像 {drawings} 件を読み込みました。" +
                         $"読み込めないテーブルは {skipped} 件、フィルター条件は {skippedConditions} 件、図形・画像などは {skippedObjects} 件です。" +
                         $"セルの書式など一部の情報は読み込まれていません。元のファイルは変更せず、別の名前で保存してください。",
@@ -165,16 +186,28 @@ public sealed partial class MainWindow
                 };
                 await notice.ShowAsync();
             }
-        });
     }
     async void SaveAs_Click(object sender, RoutedEventArgs e) => await RunAsync(SaveAsAsync);
     async Task SaveAsAsync()
     {
-        string? path = await EmbeddedFilePicker.PickPageAsync(RootGrid, "名前を付けて保存", [new("Excel ブック", [".xlsx"])],
-            save: true, suggestedName: "ブック");
+        if (filePageActive) return;
+        filePageActive = true;
+        string? path;
+        try
+        {
+            path = await EmbeddedFilePicker.PickPageAsync(RootGrid, "名前を付けて保存", [new("Excel ブック", [".xlsx"])],
+                save: true, suggestedName: Path.GetFileNameWithoutExtension(displayFileName));
+        }
+        finally
+        {
+            filePageActive = false;
+            if (dirty) ScheduleAutoSave();
+        }
         if (path is null) return;
         await CommitInputAsync();
         JsonElement saved = await ExecuteAsync("file.saveAs", new { path });
+        savedPath = path;
+        displayFileName = Path.GetFileName(path);
         RenameFileButton.IsEnabled = true;
         dirty = false;
         await ShowSaveResultAsync(saved);

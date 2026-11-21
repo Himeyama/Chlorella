@@ -69,6 +69,10 @@ sealed partial class WorksheetEngine
                                 $"rId{sheets.Count + 1}"), new XAttribute("Type", RelNs.NamespaceName + "/styles"),
                                     new XAttribute("Target", "styles.xml")))));
                 WriteXml(zip, "xl/styles.xml", MakeStyles(fonts));
+                HashSet<string> tableNames = new(sheets.SelectMany(s => s.Tables).Select(t => t.Name)
+                    .OfType<string>(), StringComparer.OrdinalIgnoreCase);
+                if (tableNames.Count != sheets.SelectMany(s => s.Tables).Count(t => t.Name is not null))
+                    throw new InvalidOperationException("同じ名前のテーブルが複数あります。");
                 for (int i = 0; i < sheets.Count; i++)
                 {
                     Sheet sheet = sheets[i];
@@ -108,7 +112,7 @@ sealed partial class WorksheetEngine
                                     $"rId{tableIndex + 2}")))))));
                     WriteWorksheetObjectRelationships(zip, i, sheet, firstTableId);
                     WriteNativeDrawing(zip, i, sheet);
-                    WriteNativeTables(zip, sheet, firstTableId);
+                    WriteNativeTables(zip, sheet, firstTableId, tableNames);
                     WriteDrawingMetadata(zip, i, sheet);
                 }
             }

@@ -323,6 +323,7 @@ public sealed partial class MainWindow
         if (!inputPending) return;
         await ExecuteAsync("cell.set", new { cell = activeCell, input = FormulaInput.Text });
         inputPending = false;
+        ScheduleAutoSave();
         UpdateHistoryButtons();
         viewportDirty = true;
     }

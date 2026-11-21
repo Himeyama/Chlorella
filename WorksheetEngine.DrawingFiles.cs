@@ -29,7 +29,8 @@ sealed partial class WorksheetEngine
                             (item.Kind == "image" && item.Data is null)) ||
             metadata.Objects.Select(item => item.Id).Distinct().Count() != metadata.Objects.Length ||
             metadata.Tables.Any(t => t is null || t.Top < 0 || t.Left < 0 || t.Bottom < t.Top || t.Right < t.Left ||
-                t.Bottom >= 1048576 || t.Right >= 16384 || (t.Filters is not null && (!t.Header ||
+                t.Bottom >= 1048576 || t.Right >= 16384 || t.Bottom - t.Top + 1 < (t.Header ? 1 : 0) + (t.Totals ? 1 : 0) ||
+                (t.Filters is not null && (!t.Header ||
                     t.Filters.Length > t.Right - t.Left + 1 || t.Filters.Any(filter => filter is null ||
                         filter.Column < t.Left || filter.Column > t.Right || filter.Values is null ||
                             filter.Values.Length > 100000 || filter.Values.Any(value => value is null)) ||

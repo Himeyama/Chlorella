@@ -36,7 +36,7 @@ sealed partial class WorksheetEngine
         if (visiting.Count >= 256 || !visiting.Add(cell)) throw new FormulaException("#REF!");
         try
         {
-            return new FormulaParser(this, sheet, input[1..], visiting).Parse();
+            return new FormulaParser(this, sheet, cell, input[1..], visiting).Parse();
         }
         finally
         {
@@ -44,7 +44,7 @@ sealed partial class WorksheetEngine
         }
     }
 
-    sealed class FormulaParser(WorksheetEngine engine, Sheet sheet, string text, HashSet<(int, int)> visiting)
+    sealed partial class FormulaParser(WorksheetEngine engine, Sheet sheet, (int Row, int Col) cell, string text, HashSet<(int, int)> visiting)
     {
         int position;
         void Space()
@@ -117,6 +117,11 @@ sealed partial class WorksheetEngine
             }
             Space();
             if (text[position..].StartsWith("#REF!", StringComparison.OrdinalIgnoreCase)) throw new FormulaException("#REF!");
+            if (TryStructuredReference(out (int Top, int Left, int Bottom, int Right) structured))
+            {
+                if (structured.Top != structured.Bottom || structured.Left != structured.Right) throw new FormulaException("#VALUE!");
+                return engine.EvaluateCell(sheet, (structured.Top, structured.Left), visiting);
+            }
             Match number = Regex.Match(text[position..], @"^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[Ee][+-]?[0-9]+)?");
             if (number.Success)
             {
@@ -146,6 +151,17 @@ sealed partial class WorksheetEngine
                 do
                 {
                     Space();
+                    if (TryStructuredReference(out (int Top, int Left, int Bottom, int Right) structured))
+                    {
+                        for (int r = structured.Top; r <= structured.Bottom; r++) for (int c = structured.Left; c <= structured.Right; c++)
+                        {
+                            (int, int) key = (r, c);
+                            string input = sheet.Cells.GetValueOrDefault(key, "");
+                            if (input.StartsWith('=') || double.TryParse(input, NumberStyles.Float,
+                                CultureInfo.InvariantCulture, out _)) values.Add(engine.EvaluateCell(sheet, key, visiting));
+                        }
+                        continue;
+                    }
                     Match range = Regex.Match(text[position..], @"^\$?[A-Za-z]{1,3}\$?[1-9][0-9]*\s*:\s*\$?[A-Za-z]{1,3}\$?[1-9][0-9]*");
                     if (range.Success)
                     {

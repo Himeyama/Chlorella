@@ -41,7 +41,18 @@ public sealed partial class MainWindow : Window
     bool activeTableFilter;
     string activeCell = "A1";
     string currentSelection = "A1";
-    bool dirty;
+    bool isDirty;
+    bool dirty
+    {
+        get => isDirty;
+        set
+        {
+            isDirty = value;
+            if (value) changeVersion++;
+            UpdateFileName();
+            if (value) ScheduleAutoSave();
+        }
+    }
     bool confirmedClose;
     bool updatingInput;
     bool inputPending;
@@ -93,6 +104,7 @@ public sealed partial class MainWindow : Window
     {
         this.dataSource = dataSource;
         InitializeComponent();
+        InitializeAutoSave();
         foreach (string font in InstalledFonts()) FontNameInput.Items.Add(font);
         foreach (string size in new[] { "8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24", "28", "36", "48",
             "72" }) FontSizeInput.Items.Add(size);

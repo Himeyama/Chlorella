@@ -47,8 +47,10 @@ sealed partial class WorksheetEngine
             if (table.Name != MainNs + "table") throw new InvalidDataException("テーブルのデータが無効です。");
             (int top, int left, int bottom, int right) = ParseRange((string?)table.Attribute("ref") ?? "");
             int headers = (int?)table.Attribute("headerRowCount") ?? 1;
+            int totals = (int?)table.Attribute("totalsRowCount") ?? 0;
             CellRange range = new(top, left, bottom, right);
-            if (headers is < 0 or > 1 || (long)(bottom - top + 1) * (right - left + 1) > 100000 ||
+            if (headers is < 0 or > 1 || totals is < 0 or > 1 || bottom - top + 1 < headers + totals ||
+                (long)(bottom - top + 1) * (right - left + 1) > 100000 ||
                 sheet.Merges.Any(merge => merge.Intersects(range)) || sheet.Tables.Any(other => new CellRange(other.Top,
                     other.Left, other.Bottom, other.Right).Intersects(range)))
             {
@@ -78,7 +80,8 @@ sealed partial class WorksheetEngine
                 if (accepted.Count > 100000) throw new InvalidDataException("フィルターの値が多すぎます。");
                 filters.Add(new(left + offset, accepted.Distinct(StringComparer.OrdinalIgnoreCase).ToArray()));
             }
-            sheet.Tables.Add(new(top, left, bottom, right, headers == 1, [.. filters]));
+            sheet.Tables.Add(new(top, left, bottom, right, headers == 1, [.. filters],
+                (string?)table.Attribute("displayName") ?? (string?)table.Attribute("name"), totals == 1));
             imported++;
         }
         return (imported, skipped, skippedFilters);

@@ -838,3 +838,112 @@ JsonElement partialTableCopy = await CopyTableRun("edit.copy", new { });
 await CopyTableRun("selection.set", new { range = "H1" });
 await CopyTableRun("edit.paste", new { text = partialTableCopy.GetProperty("text").GetString(), data = partialTableCopy.GetProperty("data").GetString() });
 Check((await CopyTableView()).GetProperty("tables").GetArrayLength() == 2, "Partial table selection copies cells only");
+
+WorksheetEngine structuredEngine = new();
+async Task<JsonElement> StructuredRun(string command, object args) => await structuredEngine.SendAsync("engine.execute", new { command, @params = args });
+async Task<string?> StructuredDisplay(string address)
+{
+    JsonElement view = await structuredEngine.SendAsync("sheet.viewport", new { ranges = new[] { address } });
+    return view.GetProperty("regions")[0].GetProperty("cells")[0][0].GetProperty("text").GetString();
+}
+await StructuredRun("cell.set", new { cell = "A1", input = "Price" });
+await StructuredRun("cell.set", new { cell = "B1", input = "Count" });
+await StructuredRun("cell.set", new { cell = "C1", input = "Total" });
+await StructuredRun("cell.set", new { cell = "A2", input = "12" });
+await StructuredRun("cell.set", new { cell = "B2", input = "3" });
+await StructuredRun("cell.set", new { cell = "C2", input = "=[@Price]*[[#This Row],[Count]]" });
+await StructuredRun("insert.table", new { range = "A1:C2", header = true });
+Check(await StructuredDisplay("C2") == "36", "Structured current-row references calculate");
+await StructuredRun("cell.set", new { cell = "A2", input = "20" });
+Check(await StructuredDisplay("C2") == "60", "Structured references recalculate after edit");
+
+string? estimatePath = Environment.GetEnvironmentVariable("CHLORELLA_TEST_ESTIMATE");
+if (!string.IsNullOrEmpty(estimatePath))
+{
+    WorksheetEngine estimate = new();
+    async Task<JsonElement> EstimateRun(string command, object args) => await estimate.SendAsync("engine.execute", new { command, @params = args });
+    async Task<string?> EstimateDisplay(string address)
+    {
+        JsonElement view = await estimate.SendAsync("sheet.viewport", new { ranges = new[] { address } });
+        return view.GetProperty("regions")[0].GetProperty("cells")[0][0].GetProperty("text").GetString();
+    }
+    await EstimateRun("file.open", new { path = estimatePath });
+    Check(await EstimateDisplay("E2") == "112800" && await EstimateDisplay("E12") == "344980", "Estimate structured formulas import");
+    await EstimateRun("cell.set", new { cell = "C2", input = "2" });
+    Check(await EstimateDisplay("E2") == "225600" && await EstimateDisplay("E12") == "457780", "Estimate recalculates after edit");
+    string saved = Path.Combine(Path.GetTempPath(), $"chlorella-estimate-{Guid.NewGuid():N}.xlsx");
+    try
+    {
+        await EstimateRun("file.saveAs", new { path = saved });
+        await EstimateRun("file.open", new { path = saved });
+        Check(await EstimateDisplay("E2") == "225600" && await EstimateDisplay("E12") == "457780", "Estimate structured formulas survive save and reopen");
+    }
+    finally { File.Delete(saved); }
+}
+
+string totalsFixture = Path.Combine(Path.GetTempPath(), $"chlorella-totals-{Guid.NewGuid():N}.xlsx");
+try
+{
+    WorksheetEngine source = new();
+    async Task<JsonElement> SourceRun(string command, object args) => await source.SendAsync("engine.execute", new { command, @params = args });
+    await SourceRun("cell.set", new { cell = "A1", input = "Amount" });
+    await SourceRun("cell.set", new { cell = "A2", input = "10" });
+    await SourceRun("cell.set", new { cell = "A3", input = "20" });
+    await SourceRun("cell.set", new { cell = "A4", input = "=SUM(Table1[Amount])" });
+    await SourceRun("insert.table", new { range = "A1:A4", header = true });
+    await SourceRun("file.saveAs", new { path = totalsFixture });
+    using (FileStream file = File.Open(totalsFixture, FileMode.Open, FileAccess.ReadWrite))
+    using (ZipArchive zip = new(file, ZipArchiveMode.Update))
+    {
+        zip.GetEntry("chlorella-format.txt")?.Delete();
+        ZipArchiveEntry tableEntry = zip.GetEntry("xl/tables/table1.xml") ?? throw new Exception("Missing table");
+        System.Xml.Linq.XDocument table;
+        using (Stream input = tableEntry.Open()) table = System.Xml.Linq.XDocument.Load(input);
+        table.Root?.SetAttributeValue("totalsRowCount", "1");
+        table.Root?.SetAttributeValue("totalsRowShown", "1");
+        tableEntry.Delete();
+        using Stream output = zip.CreateEntry("xl/tables/table1.xml").Open();
+        table.Save(output);
+    }
+    WorksheetEngine totals = new();
+    async Task<JsonElement> TotalsRun(string command, object args) => await totals.SendAsync("engine.execute", new { command, @params = args });
+    async Task<JsonElement> TotalsView() => await totals.SendAsync("sheet.viewport", new { ranges = new[] { "A1:A4" } });
+    await TotalsRun("file.open", new { path = totalsFixture });
+    Check((await TotalsView()).GetProperty("regions")[0].GetProperty("cells")[3][0].GetProperty("text").GetString() == "30", "Imported totals row is excluded from structured column sum");
+    await TotalsRun("table.sort", new { cell = "A1", direction = "descending" });
+    Check((await TotalsView()).GetProperty("regions")[0].GetProperty("cells")[3][0].GetProperty("text").GetString() == "30", "Sorting leaves totals row in place");
+    await TotalsRun("table.filter", new { cell = "A1", values = new[] { "10" } });
+    Check((await TotalsView()).GetProperty("regions")[0].GetProperty("rowHeights")[3].GetDouble() > 0, "Filtering leaves totals row visible");
+}
+finally { File.Delete(totalsFixture); }
+
+string? settlementPath = Environment.GetEnvironmentVariable("CHLORELLA_TEST_SETTLEMENT");
+if (!string.IsNullOrEmpty(settlementPath))
+{
+    WorksheetEngine settlement = new();
+    async Task<JsonElement> SettlementRun(string command, object args) => await settlement.SendAsync("engine.execute", new { command, @params = args });
+    async Task<string?> SettlementDisplay(string address)
+    {
+        JsonElement view = await settlement.SendAsync("sheet.viewport", new { ranges = new[] { address } });
+        return view.GetProperty("regions")[0].GetProperty("cells")[0][0].GetProperty("text").GetString();
+    }
+    await SettlementRun("file.open", new { path = settlementPath });
+    for (int sheet = 0; sheet < 2; sheet++)
+    {
+        await SettlementRun("sheet.activate", new { sheet });
+        Check(await SettlementDisplay("B22") == "65547", "Table totals exclude the totals row");
+    }
+    string saved = Path.Combine(Path.GetTempPath(), $"chlorella-settlement-{Guid.NewGuid():N}.xlsx");
+    try
+    {
+        await SettlementRun("file.saveAs", new { path = saved });
+        await SettlementRun("file.open", new { path = saved });
+        Check(await SettlementDisplay("B22") == "65547", "Table totals survive save and reopen");
+        using FileStream file = File.OpenRead(saved);
+        using ZipArchive zip = new(file, ZipArchiveMode.Read);
+        using Stream stream = (zip.GetEntry("xl/tables/table1.xml") ?? throw new Exception("Missing table")).Open();
+        System.Xml.Linq.XDocument xml = System.Xml.Linq.XDocument.Load(stream);
+        Check((string?)xml.Root?.Attribute("totalsRowCount") == "1", "Native table retains totals row");
+    }
+    finally { File.Delete(saved); }
+}

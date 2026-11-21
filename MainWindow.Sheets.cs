@@ -98,7 +98,14 @@ public sealed partial class MainWindow
                 await CommitInputAsync();
                 await ExecuteAsync("sheet.activate", new { sheet = index });
                 firstRow = 1;
-                await RefreshAsync();
+                sheetTabsState = null;
+                foreach (SelectorBarItem tab in SheetTabs.Items.OfType<SelectorBarItem>())
+                {
+                    string label = AutomationProperties.GetName(tab).Replace("、表示中のシート", "");
+                    if (tab.Tag is int tabIndex && tabIndex == index) label += "、表示中のシート";
+                    AutomationProperties.SetName(tab, label);
+                }
+                await RefreshAsync(refreshSheets: false);
                 selectionAnchor = activeCell;
                 selectionLead = activeCell;
                 FocusCell(activeCell);

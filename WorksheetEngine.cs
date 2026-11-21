@@ -126,6 +126,9 @@ sealed partial class WorksheetEngine : IWorksheetDataSource
             case "object.delete":
             case "arrange.bringForward":
             case "arrange.sendBackward": return ExecuteDrawing(command, args);
+            case "edit.shiftCells":
+                ShiftCells(args);
+                return new { };
             case "home.insertRows":
             case "home.insertColumns":
                 InsertCells(command, args);
@@ -183,7 +186,16 @@ sealed partial class WorksheetEngine : IWorksheetDataSource
                     if (sTop == sBottom &&
                         sLeft == sRight) Current.Selection = $"{Address(merged.Top, merged.Left)}:{Address(merged.Bottom, merged.Right)}";
                 }
-                return new { };
+                Current.Cells.TryGetValue(ParseCell(Current.Active), out string? selectedInput);
+                (int selectedTop, int selectedLeft, int selectedBottom, int selectedRight) = ParseRange(Current.Selection);
+                return new
+                {
+                    activeCell = Current.Active,
+                    selection = Current.Selection,
+                    input = selectedInput ?? "",
+                    selectionBounds = new { start = new { row = selectedTop, col = selectedLeft },
+                        end = new { row = selectedBottom, col = selectedRight } }
+                };
             case "cell.set":
                 (int row, int col) = ParseCell(args.GetProperty("cell").GetString() ?? "");
                 string input = CompleteFormulaParentheses(NormalizeFullWidthDigits(args.GetProperty("input").GetString() ?? ""));

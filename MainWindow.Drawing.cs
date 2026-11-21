@@ -11,9 +11,22 @@ namespace Chlorella;
 
 public sealed partial class MainWindow
 {
+    void ClearObjectSelectionVisuals()
+    {
+        foreach (UIElement element in CellGrid.Children)
+        {
+            if (element is not Canvas overlay) continue;
+            for (int i = overlay.Children.Count - 1; i >= 0; i--)
+            {
+                if (overlay.Children[i] is DrawingObjectButton { Tag: "resizeHandle" }) overlay.Children.RemoveAt(i);
+                else if (overlay.Children[i] is DrawingObjectButton button) button.BorderThickness = new Thickness(0);
+            }
+        }
+    }
+
     async Task AddDrawingObjectsAsync(JsonElement view)
     {
-        Canvas overlay = new();
+        Canvas overlay = new() { Tag = "drawing-overlay" };
         overlay.Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry
         {
             Rect = new Windows.Foundation.Rect(48, 25,
@@ -120,9 +133,11 @@ public sealed partial class MainWindow
             objectButton.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
             {
                 if (!e.GetCurrentPoint(objectButton).Properties.IsLeftButtonPressed) return;
+                ClearObjectSelectionVisuals();
                 selectedImage = null;
                 selectedShape = id;
                 ShapeTab.Visibility = Visibility.Visible;
+                AddObjectResizeHandles(overlay, objectButton, "shape", id, x, y, Math.Max(1, width), Math.Max(1, height), dx, dy);
                 objectButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"];
                 objectButton.BorderThickness = new Thickness(2);
                 objectButton.Focus(FocusState.Pointer);
@@ -159,6 +174,12 @@ public sealed partial class MainWindow
                 e.Handled = true;
                 await RunAsync(async () =>
                 {
+                    if (Math.Abs(point.X - origin.X) + Math.Abs(point.Y - origin.Y) <= 1 && !inputPending)
+                    {
+                        Canvas.SetLeft(objectButton, x);
+                        Canvas.SetTop(objectButton, y);
+                        return;
+                    }
                     bool committed = false;
                     try
                     {
@@ -196,6 +217,7 @@ public sealed partial class MainWindow
 ;
             objectButton.KeyDown += async (_, e) =>
             {
+                if (await HandleObjectShortcutAsync(e, "shape", id)) return;
                 double mx = e.Key == VirtualKey.Left ? -1 : e.Key == VirtualKey.Right ? 1 : 0;
                 double my = e.Key == VirtualKey.Up ? -1 : e.Key == VirtualKey.Down ? 1 : 0;
                 if (mx == 0 && my == 0) return;
@@ -406,6 +428,7 @@ public sealed partial class MainWindow
         {
             DrawingObjectButton handle = new()
             {
+                Tag = "resizeHandle",
                 Width = 10,
                 Height = 10,
                 MinWidth = 0,

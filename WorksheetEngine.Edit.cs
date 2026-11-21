@@ -12,6 +12,10 @@ sealed partial class WorksheetEngine
     readonly Stack<Snapshot> undo = new();
     readonly Stack<Snapshot> redo = new();
 
+    internal bool CanUndo => undo.Count > 0 && CanUseHistory;
+    internal bool CanRedo => redo.Count > 0 && CanUseHistory;
+    internal bool CanUseHistory => !sheets.Any(sheet => sheet.ProtectionHash.HasValue);
+
     Snapshot Capture() => new(sheets.Select(CloneSheet).ToList(), activeSheet);
     static Sheet CloneSheet(Sheet source) => new(source.Name)
     {
@@ -91,7 +95,7 @@ sealed partial class WorksheetEngine
             or "home.decreaseIndent"
             or "home.mergeCells"
             or "home.unmergeCells";
-        change |= command is "edit.moveRange" or "home.insertRows" or "home.insertColumns";
+        change |= command is "edit.shiftCells" or "edit.moveRange" or "home.insertRows" or "home.insertColumns";
         change |= command is "insert.shape"
             or "insert.picture"
             or "insert.table"

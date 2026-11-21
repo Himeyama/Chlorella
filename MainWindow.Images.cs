@@ -26,7 +26,9 @@ public sealed partial class MainWindow
         button.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
         {
             if (!e.GetCurrentPoint(button).Properties.IsLeftButtonPressed) return;
+            ClearObjectSelectionVisuals();
             SelectImage();
+            AddObjectResizeHandles(overlay, button, "image", id, x, y, button.Width, button.Height, dx, dy);
             button.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"];
             button.BorderThickness = new Thickness(2);
             button.Focus(FocusState.Pointer);
@@ -63,6 +65,12 @@ public sealed partial class MainWindow
             e.Handled = true;
             await RunAsync(async () =>
             {
+                if (Math.Abs(point.X - origin.X) + Math.Abs(point.Y - origin.Y) <= 1 && !inputPending)
+                {
+                    Canvas.SetLeft(button, x);
+                    Canvas.SetTop(button, y);
+                    return;
+                }
                 bool committed = false;
                 try
                 {
@@ -100,14 +108,7 @@ public sealed partial class MainWindow
 ;
         button.KeyDown += async (_, e) =>
         {
-            bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(
-                VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
-            if (control && e.Key is VirtualKey.C or VirtualKey.X)
-            {
-                e.Handled = true;
-                CopyObject("image", id, e.Key == VirtualKey.X);
-                return;
-            }
+            if (await HandleObjectShortcutAsync(e, "image", id)) return;
             if (e.Key == VirtualKey.Delete)
             {
                 e.Handled = true;

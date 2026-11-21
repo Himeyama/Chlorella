@@ -187,8 +187,8 @@
                                 <Button Style="{StaticResource RibbonButtonStyle}" Tag="fill" Click="ColorPalette_Click" AutomationProperties.Name="塗りつぶしの色を選択" ToolTipService.ToolTip="塗りつぶしの色を選択"><FontIcon Glyph="&#xE70D;" FontSize="10"/></Button>
                                 <Button Style="{StaticResource RibbonButtonStyle}" Tag="font" Click="ColorApply_Click" AutomationProperties.Name="文字の色" ToolTipService.ToolTip="文字の色"><Grid Width="20" Height="20"><FontIcon Glyph="&#xE8D2;" FontSize="16"/><Rectangle x:Name="FontColorSwatch" Height="3" VerticalAlignment="Bottom" Fill="#FF0000"/></Grid></Button>
                                 <Button Style="{StaticResource RibbonButtonStyle}" Tag="font" Click="ColorPalette_Click" AutomationProperties.Name="文字の色を選択" ToolTipService.ToolTip="文字の色を選択"><FontIcon Glyph="&#xE70D;" FontSize="10"/></Button>
-                                <Button Style="{StaticResource RibbonButtonStyle}" Click="Undo_Click" AutomationProperties.Name="元に戻す" ToolTipService.ToolTip="元に戻す"><FontIcon Glyph="&#xE7A7;" FontSize="16"/></Button>
-                                <Button Style="{StaticResource RibbonButtonStyle}" Click="Redo_Click" AutomationProperties.Name="やり直し" ToolTipService.ToolTip="やり直し"><FontIcon Glyph="&#xE7A6;" FontSize="16"/></Button>
+                                <Button Style="{StaticResource RibbonButtonStyle}" x:Name="UndoButton" IsEnabled="False" Click="Undo_Click" AutomationProperties.Name="元に戻す" ToolTipService.ToolTip="元に戻す"><FontIcon Glyph="&#xE7A7;" FontSize="16"/></Button>
+                                <Button Style="{StaticResource RibbonButtonStyle}" x:Name="RedoButton" IsEnabled="False" Click="Redo_Click" AutomationProperties.Name="やり直し" ToolTipService.ToolTip="やり直し"><FontIcon Glyph="&#xE7A6;" FontSize="16"/></Button>
                             </StackPanel>
                             <TextBlock Text="フォント" HorizontalAlignment="Center"/>
                         </StackPanel>

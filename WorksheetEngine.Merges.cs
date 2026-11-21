@@ -20,6 +20,9 @@ sealed partial class WorksheetEngine
         if (Current.Cells.Any(p => range.Contains(p.Key.Row, p.Key.Col) && p.Key != (top,
             left))) throw new InvalidOperationException("左上以外のセルにデータがあります。データを消去してから結合してください。");
         Current.Merges.Add(range);
+        (int, int) anchor = (top, left);
+        FontStyle style = Current.Fonts.GetValueOrDefault(anchor, DefaultFont);
+        Current.Fonts[anchor] = style with { Horizontal = "Center", Vertical = "Center" };
     }
 
     void UnmergeCells()

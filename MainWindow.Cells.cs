@@ -67,14 +67,17 @@ public sealed partial class MainWindow
             Windows.Foundation.Point position = e.GetCurrentPoint(cell).Position;
             (int pressedRow, int pressedCol) = ParseCell(address);
             bool onEdge = (pressedRow - 1 == selectionBounds.Top && position.Y <= 5) ||
-                (pressedRow - 1 == selectionBounds.Bottom && position.Y >= cell.ActualHeight - 5) ||
+                (pressedRow - 1 + Grid.GetRowSpan(cell) - 1 == selectionBounds.Bottom && position.Y >= cell.ActualHeight - 5) ||
                 (pressedCol == selectionBounds.Left && position.X <= 5) ||
-                (pressedCol == selectionBounds.Right && position.X >= cell.ActualWidth - 5);
+                (pressedCol + Grid.GetColumnSpan(cell) - 1 == selectionBounds.Right && position.X >= cell.ActualWidth - 5);
             if (onEdge && pressedRow - 1 >= selectionBounds.Top && pressedRow - 1 <= selectionBounds.Bottom &&
                 pressedCol >= selectionBounds.Left && pressedCol <= selectionBounds.Right)
             {
                 cell.ReleasePointerCapture(e.Pointer);
-                BeginRangeMove(e, pressedRow - 1, pressedCol, false, false);
+                Windows.Foundation.Point gridPoint = e.GetCurrentPoint(CellGrid).Position;
+                int moveRow = firstRow - 1 + IndexAt(gridPoint.Y - 25, rowHeights, viewRows);
+                int moveColumn = firstColumn + IndexAt(gridPoint.X - 48, columnWidths, viewColumns);
+                BeginRangeMove(e, moveRow, moveColumn, false, false);
                 return;
             }
             if (cell.Content is FontIcon check && Math.Abs(position.X - cell.ActualWidth / 2) <= 14 &&
@@ -354,16 +357,22 @@ public sealed partial class MainWindow
         (int row2, int col2) = ParseCell(dragEnd);
         UpdateSelectionVisuals(Math.Min(row1, row2) - 1, Math.Min(col1, col2), Math.Max(row1, row2) - 1, Math.Max(col1, col2));
     }
+    (int Top, int Left, int Bottom, int Right)? visualSelectionBounds;
+
     void UpdateSelectionVisuals(int top, int left, int bottom, int right, bool updateCorner = true)
     {
+        (int Top, int Left, int Bottom, int Right)? previous = visualSelectionBounds;
         selectionBounds = (top, left, bottom, right);
-        UpdateHeaderSelectionVisuals(top, left, bottom, right);
+        visualSelectionBounds = selectionBounds;
+        if (previous != selectionBounds) UpdateHeaderSelectionVisuals(top, left, bottom, right);
         foreach (UIElement element in CellGrid.Children)
         {
             if (element is not Button { Tag: string tag } button || tag.Contains(':') || tag == "all") continue;
-            (int row, int col) = ParseCell(tag);
-            row--;
+            int row = firstRow - 1 + Grid.GetRow(button) - 1;
+            int col = firstColumn + Grid.GetColumn(button) - 1;
             bool selected = row >= top && row <= bottom && col >= left && col <= right;
+            bool previouslySelected = previous is { } old && row >= old.Top && row <= old.Bottom && col >= old.Left && col <= old.Right;
+            if (!selected && !previouslySelected) continue;
             Style style = (Style)RootGrid.Resources[selected ? "SelectedCellStyle" : "SheetCellStyle"];
             Thickness border = new(col == left ? 2 : 0, row == top ? 2 : 0,
                 col + Grid.GetColumnSpan(button) - 1 == right ? 2 : 0, row + Grid.GetRowSpan(button) - 1 == bottom ? 2 : 0);
@@ -524,7 +533,7 @@ public sealed partial class MainWindow
             selectedImage = null;
             ShapeTab.Visibility = Visibility.Collapsed;
             if (RibbonSelector.SelectedItem == ShapeTab) RibbonSelector.SelectedItem = RibbonSelector.Items[1];
-            viewportDirty = true;
+            ClearObjectSelectionVisuals();
         }
         bool changedCells = inputPending || viewportDirty || cellEditor is not null;
         await CommitInputAsync();
@@ -533,10 +542,11 @@ public sealed partial class MainWindow
         string firstAddress = CellAddress(Math.Min(row1, row2), Math.Min(col1, col2));
         string lastAddress = CellAddress(Math.Max(row1, row2), Math.Max(col1, col2));
         string range = $"{firstAddress}:{lastAddress}";
-        await ExecuteAsync("selection.set", new { range, active = start });
+        JsonElement selection = await ExecuteAsync("selection.set", new { range, active = start });
         selectionAnchor = start;
         selectionLead = end;
-        await RefreshAsync(refreshSheets: false, selectionOnly: !changedCells, updateCellValues: changedCells);
+        if (!changedCells && TryUpdateSelection(selection)) { FocusCell(end); return; }
+        await RefreshAsync(refreshSheets: false, selectionOnly: !changedCells, updateCellValues: changedCells, preserveDrawings: true);
         FocusCell(end);
     }
     static (int row, int col) ParseCell(string address)
@@ -584,6 +594,12 @@ public sealed partial class MainWindow
         bool shift = (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
         bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(
             VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        if (control && e.Key is VirtualKey.Z or VirtualKey.Y)
+        {
+            e.Handled = true;
+            await RunAsync(() => ApplyHistoryAsync(e.Key == VirtualKey.Y || shift));
+            return;
+        }
         if (control && e.Key is VirtualKey.C or VirtualKey.X or VirtualKey.V)
         {
             e.Handled = true;
@@ -887,7 +903,7 @@ public sealed partial class MainWindow
             if ((e.Key == VirtualKey.Space && inputCell.Content is FontIcon) ||
                 e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or VirtualKey
                     .Enter or VirtualKey.Delete or VirtualKey.F2 ||
-                (control && e.Key is VirtualKey.A or VirtualKey.C or VirtualKey.X or VirtualKey.V or VirtualKey.E))
+                (control && e.Key is VirtualKey.A or VirtualKey.C or VirtualKey.X or VirtualKey.V or VirtualKey.Z or VirtualKey.Y or VirtualKey.E))
                 Cell_KeyDown(navigationCell, e);
         }
 ;
@@ -995,6 +1011,7 @@ public sealed partial class MainWindow
         {
             e.Handled = true;
             inputPending = false;
+            UpdateHistoryButtons();
             await RunAsync(async () =>
             {
                 await RefreshAsync();
@@ -1019,8 +1036,9 @@ public sealed partial class MainWindow
         int first = Math.Min(start, end), last = Math.Max(start, end);
         string range = row ? $"{first}:{last}" : $"{ColumnName(first)}:{ColumnName(last)}";
         string active = row ? CellAddress(start, firstColumn) : CellAddress(firstRow, start);
-        await ExecuteAsync("selection.set", new { range, active });
-        await RefreshAsync();
+        JsonElement selection = await ExecuteAsync("selection.set", new { range, active });
+        if (viewportDirty || cellEditor is not null || !TryUpdateSelection(selection))
+            await RefreshAsync(refreshSheets: false, selectionOnly: !viewportDirty && cellEditor is null, updateCellValues: viewportDirty, preserveDrawings: true);
         selectionAnchor = activeCell;
         selectionLead = activeCell;
         FocusCell(activeCell);
@@ -1035,8 +1053,9 @@ public sealed partial class MainWindow
             _ when tag.StartsWith("col:") => $"{ColumnName(int.Parse(tag[4..]))}:{ColumnName(int.Parse(tag[4..]))}",
             _ => throw new InvalidOperationException("選択範囲を認識できません。"),
         };
-        await ExecuteAsync("selection.set", new { range });
-        await RefreshAsync();
+        JsonElement selection = await ExecuteAsync("selection.set", new { range });
+        if (viewportDirty || cellEditor is not null || !TryUpdateSelection(selection))
+            await RefreshAsync(refreshSheets: false, selectionOnly: !viewportDirty && cellEditor is null, updateCellValues: viewportDirty);
         selectionAnchor = activeCell;
         selectionLead = activeCell;
         FocusCell(activeCell);

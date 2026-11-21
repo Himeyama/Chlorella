@@ -8,6 +8,8 @@ namespace Chlorella;
 
 public sealed partial class MainWindow
 {
+    JsonElement renderedView;
+
     Task<JsonElement> RequestViewportAsync()
     {
         string start = CellAddress(firstRow, firstColumn);
@@ -19,7 +21,8 @@ public sealed partial class MainWindow
         bool refreshSheets = true,
         bool selectionOnly = false,
         bool updateCellValues = false,
-        bool updateFontStyles = false)
+        bool updateFontStyles = false,
+        bool preserveDrawings = false)
     {
         int requestedRow = firstRow;
         if (dataSource is WorksheetEngine)
@@ -60,11 +63,13 @@ public sealed partial class MainWindow
             !view.TryGetProperty("shapes", out _) ||
             !view.TryGetProperty("images", out _))
             throw new IncompatibleDesktopHostException();
+        renderedView = view;
         activeTableFilter = view.GetProperty("tables").EnumerateArray().Any(table =>
             table.TryGetProperty("filteredColumns", out JsonElement columns) &&
             columns.ValueKind == JsonValueKind.Array && columns.GetArrayLength() > 0);
         activeCell = view.GetProperty("activeCell").GetString() ?? "A1";
         string sheetName = view.GetProperty("sheet").GetString() ?? "";
+        bool sameSheet = currentSheet == sheetName;
         if (currentSheet != sheetName)
         {
             selectedShape = null;
@@ -79,6 +84,7 @@ public sealed partial class MainWindow
         FormulaInput.Text = view.GetProperty("input").ValueKind == JsonValueKind.String ? view.GetProperty("input").GetString() : "";
         updatingInput = false;
         inputPending = false;
+        UpdateHistoryButtons();
         JsonElement rows = view.GetProperty("regions")[0].GetProperty("cells");
         JsonElement region = view.GetProperty("regions")[0];
         (int top, int left, int bottom, int right) = ReadSelectionBounds(view);
@@ -86,11 +92,16 @@ public sealed partial class MainWindow
         paletteTheme = view.GetProperty("theme").GetProperty("colors").Clone();
         UpdateMergeButton(merges);
         UpdateWrapButton(rows, view.GetProperty("styles"), merges);
+        bool sameDrawingGeometry = preserveDrawings && sameSheet && renderedRow == firstRow && renderedColumn == firstColumn &&
+            renderedRows == viewRows && renderedColumns == viewColumns &&
+            Enumerable.Range(0, viewRows).All(i => rowHeights[i] ==
+                (region.GetProperty("rowHeights")[i].GetDouble() == 0 ? 0 : Math.Max(18, region.GetProperty("rowHeights")[i].GetDouble()))) &&
+            Enumerable.Range(0, viewColumns).All(i => columnWidths[i] == Math.Max(20, region.GetProperty("columnWidths")[i].GetDouble()));
         if ((updateCellValues || updateFontStyles) && !refreshSheets && dataSource is WorksheetEngine &&
             renderedRow == firstRow && renderedColumn == firstColumn &&
             renderedRows == viewRows && renderedColumns == viewColumns && merges.GetArrayLength() == 0 &&
-            view.GetProperty("tables").GetArrayLength() == 0 && view.GetProperty("shapes").GetArrayLength() == 0 &&
-            view.GetProperty("images").GetArrayLength() == 0)
+            view.GetProperty("tables").GetArrayLength() == 0 && (sameDrawingGeometry ||
+            (view.GetProperty("shapes").GetArrayLength() == 0 && view.GetProperty("images").GetArrayLength() == 0)))
         {
             UpdateVisibleCellValues(rows, view.GetProperty("styles"), updateFontStyles);
             for (int i = 0; i < viewRows; i++)
@@ -117,17 +128,7 @@ public sealed partial class MainWindow
             renderedColumns == viewColumns && cellEditor is null)
         {
             UpdateSelectionVisuals(top, left, bottom, right);
-            foreach (UIElement element in CellGrid.Children)
-            {
-                if (element is Button { Tag: string tag, Content: TextBlock text } && tag == activeCell)
-                {
-                    updatingFont = true;
-                    FontNameInput.Text = text.FontFamily.Source;
-                    FontSizeInput.Text = (text.FontSize * 72.0 / 96.0).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-                    updatingFont = false;
-                    break;
-                }
-            }
+            UpdateActiveFont(rows, view.GetProperty("styles"));
             return;
         }
         for (int i = 0; i < viewColumns; i++) columnWidths[i] = Math.Max(20, region.GetProperty("columnWidths")[i].GetDouble());
@@ -138,7 +139,12 @@ public sealed partial class MainWindow
         }
         UpdateHorizontalOffset();
         JsonElement styles = view.GetProperty("styles");
-        CellGrid.Children.Clear();
+        Canvas? retainedOverlay = sameDrawingGeometry
+            ? CellGrid.Children.OfType<Canvas>().FirstOrDefault(canvas => canvas.Tag as string == "drawing-overlay") : null;
+        if (retainedOverlay is null) CellGrid.Children.Clear();
+        else foreach (UIElement child in CellGrid.Children.ToArray())
+            if (!ReferenceEquals(child, retainedOverlay)) CellGrid.Children.Remove(child);
+        visualSelectionBounds = null;
         rowHeaderOffsets.Clear();
         scrollPreview = null;
         selectionCorner = null;
@@ -218,14 +224,6 @@ public sealed partial class MainWindow
                     FontFamily = new Microsoft.UI.Xaml.Media.FontFamily(style.GetProperty("name").GetString() ?? "Segoe UI"),
                     FontSize = style.GetProperty("size").GetDouble() * 96.0 / 72.0
                 };
-                if (address == activeCell)
-                {
-                    updatingFont = true;
-                    FontNameInput.Text = style.GetProperty("name").GetString() ?? "";
-                    FontSizeInput.Text = style.GetProperty("size").GetDouble().ToString("0.##",
-                        System.Globalization.CultureInfo.InvariantCulture);
-                    updatingFont = false;
-                }
                 if (fontBrush is not null) text.Foreground = fontBrush;
                 JsonElement alignment = fullStyle.GetProperty("align");
                 text.TextWrapping = alignment.GetProperty("wrap").GetBoolean() ? TextWrapping.Wrap : TextWrapping.NoWrap;
@@ -253,7 +251,7 @@ public sealed partial class MainWindow
                     FocusVisualPrimaryThickness = new Thickness(0),
                     FocusVisualSecondaryThickness = new Thickness(0),
                 };
-                AttachTableMenu(cell, view.GetProperty("tables"), absoluteRow, absoluteCol, address);
+                AttachLazyCellMenu(cell, view.GetProperty("tables"), absoluteRow, absoluteCol, address);
                 if (tableStyle.ValueKind == JsonValueKind.Object)
                 {
                     cell.BorderThickness = new Thickness(1, 1, 1, 1);
@@ -332,7 +330,8 @@ public sealed partial class MainWindow
                 }
             }
         }
-        await AddDrawingObjectsAsync(view);
+        UpdateActiveFont(rows, styles);
+        if (retainedOverlay is null) await AddDrawingObjectsAsync(view);
         if (requestedRow != firstRow || requestedColumn != firstColumn)
         {
             renderedRow = requestedRow;
@@ -344,6 +343,7 @@ public sealed partial class MainWindow
             return;
         }
         UpdateHeaderSelectionVisuals(top, left, bottom, right);
+        visualSelectionBounds = (top, left, bottom, right);
         UpdateSelectionCorner(bottom, right);
         DrawCopyOutline();
         renderedRow = firstRow;

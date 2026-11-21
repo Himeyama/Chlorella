@@ -33,9 +33,9 @@ public sealed partial class MainWindow
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 IsHitTestVisible = false
             };
-            if (wasBoolean)
+            if (wasBoolean || updateFontStyles)
             {
-                button.Content = text;
+                if (wasBoolean) button.Content = text;
                 button.Padding = new Thickness(5 + alignment.GetProperty("indent").GetInt32() * 12, 0, 5, 0);
                 button.VerticalContentAlignment = alignment.GetProperty("v").GetString() switch
                 {
@@ -77,6 +77,14 @@ public sealed partial class MainWindow
         }
     }
 
+    void SetFontInputs(string name, string size)
+    {
+        FontNameInput.SelectedItem = FontNameInput.Items.Contains(name) ? name : null;
+        FontSizeInput.SelectedItem = FontSizeInput.Items.Contains(size) ? size : null;
+        FontNameInput.Text = name;
+        FontSizeInput.Text = size;
+    }
+
     void UpdateActiveFont(JsonElement rows, JsonElement styles)
     {
         (int row, int col) = ParseCell(activeCell);
@@ -86,8 +94,8 @@ public sealed partial class MainWindow
         updatingFont = true;
         try
         {
-            FontNameInput.Text = font.GetProperty("name").GetString() ?? "";
-            FontSizeInput.Text = font.GetProperty("size").GetDouble().ToString("0.##", CultureInfo.InvariantCulture);
+            SetFontInputs(font.GetProperty("name").GetString() ?? "",
+                font.GetProperty("size").GetDouble().ToString("0.##", CultureInfo.CurrentCulture));
         }
         finally
         {

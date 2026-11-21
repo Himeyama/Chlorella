@@ -2,6 +2,14 @@ using System.IO.Compression;
 using System.Text.Json;
 using Chlorella;
 
+WorksheetEngine historyEngine = new();
+if (historyEngine.CanUndo || historyEngine.CanRedo) throw new Exception("Initial history availability");
+await historyEngine.SendAsync("engine.execute", new { command = "cell.set", @params = new { cell = "A1", input = "test" } });
+if (!historyEngine.CanUndo || historyEngine.CanRedo) throw new Exception("History after edit");
+await historyEngine.SendAsync("engine.execute", new { command = "edit.undo", @params = new { } });
+if (historyEngine.CanUndo || !historyEngine.CanRedo) throw new Exception("History after undo");
+await historyEngine.SendAsync("engine.execute", new { command = "edit.redo", @params = new { } });
+if (!historyEngine.CanUndo || historyEngine.CanRedo) throw new Exception("History after redo");
 WorksheetEngine engine = new();
 WorksheetEngine moveEngine = new();
 async Task<JsonElement> MoveRun(string command, object args) => await moveEngine.SendAsync("engine.execute", new { command, @params = args });
@@ -36,6 +44,44 @@ if (movedCells[0][0].GetProperty("text").GetString() != "second row" || movedCel
 await MoveRun("edit.undo", new { });
 movedView = await moveEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1" } });
 if (movedView.GetProperty("regions")[0].GetProperty("cells")[0][0].GetProperty("text").GetString() != "right") throw new Exception("Undo inserted row");
+WorksheetEngine mergedMoveEngine = new();
+async Task<JsonElement> MergedRun(string command, object args) => await mergedMoveEngine.SendAsync("engine.execute", new { command, @params = args });
+await MergedRun("cell.set", new { cell = "A1", input = "merged" });
+await MergedRun("selection.set", new { range = "A1:B2" });
+await MergedRun("home.mergeCells", new { });
+await MergedRun("edit.moveRange", new { rowOffset = 1, columnOffset = 1, swap = false });
+JsonElement mergedView = await mergedMoveEngine.SendAsync("sheet.viewport", new { ranges = new[] { "B2:C3" } });
+if (mergedView.GetProperty("merges").GetArrayLength() != 1 || mergedView.GetProperty("input").GetString() != "merged") throw new Exception("Move merged range");
+await MergedRun("edit.undo", new { });
+await MergedRun("edit.moveRange", new { rowOffset = 0, columnOffset = 2, swap = true, vertical = false, insertIndex = 4 });
+mergedView = await mergedMoveEngine.SendAsync("sheet.viewport", new { ranges = new[] { "C1:D2" } });
+if (mergedView.GetProperty("merges").GetArrayLength() != 1 || mergedView.GetProperty("input").GetString() != "merged") throw new Exception("Insert moved merged range");
+WorksheetEngine mergeShiftEngine = new();
+async Task<JsonElement> MergeShiftRun(string command, object args) => await mergeShiftEngine.SendAsync("engine.execute", new { command, @params = args });
+await MergeShiftRun("cell.set", new { cell = "A3", input = "merged" });
+await MergeShiftRun("selection.set", new { range = "A3:B4" });
+await MergeShiftRun("home.mergeCells", new { });
+await MergeShiftRun("edit.shiftCells", new { range = "A1:B2", insert = false, vertical = true });
+JsonElement shiftedMerge = await mergeShiftEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:B2" } });
+if (shiftedMerge.GetProperty("merges").GetArrayLength() != 1 || shiftedMerge.GetProperty("merges")[0].GetProperty("text").GetString() != "merged") throw new Exception("Shift merged cells");
+await MergeShiftRun("edit.undo", new { });
+bool rejectedSplit = false;
+try { await MergeShiftRun("edit.shiftCells", new { range = "A1:A2", insert = false, vertical = true }); }
+catch (InvalidOperationException) { rejectedSplit = true; }
+if (!rejectedSplit) throw new Exception("Reject split merged cells");
+await MergeShiftRun("edit.shiftCells", new { range = "A3:B4", insert = false, vertical = true });
+shiftedMerge = await mergeShiftEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:B4" } });
+if (shiftedMerge.GetProperty("merges").GetArrayLength() != 0) throw new Exception("Delete merged cells");
+WorksheetEngine shiftEngine = new();
+async Task<JsonElement> ShiftRun(string command, object args) => await shiftEngine.SendAsync("engine.execute", new { command, @params = args });
+await ShiftRun("cell.set", new { cell = "A1", input = "one" });
+await ShiftRun("cell.set", new { cell = "A2", input = "two" });
+await ShiftRun("edit.shiftCells", new { range = "A1", insert = true, vertical = true });
+JsonElement shiftView = await shiftEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:A3" } });
+if (shiftView.GetProperty("regions")[0].GetProperty("cells")[1][0].GetProperty("text").GetString() != "one") throw new Exception("Insert shifted cells");
+await ShiftRun("edit.shiftCells", new { range = "A1", insert = false, vertical = true });
+shiftView = await shiftEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:A2" } });
+if (shiftView.GetProperty("regions")[0].GetProperty("cells")[1][0].GetProperty("text").GetString() != "two") throw new Exception("Delete shifted cells");
 async Task<JsonElement> Run(string command, object args) => await engine.SendAsync("engine.execute", new { command, @params = args });
 async Task<string> Input(string cell)
 {

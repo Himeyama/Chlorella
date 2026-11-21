@@ -23,7 +23,8 @@ sealed partial class WorksheetEngine
         if (swap && source.Intersects(target)) throw new InvalidOperationException("入れ替える範囲が重なっています。");
         EnsureVisibleRows(Current.Selection);
         EnsureVisibleRows($"{Address(target.Top, target.Left)}:{Address(target.Bottom, target.Right)}");
-        if (Current.Merges.Any(m => m.Intersects(source) || m.Intersects(target)) ||
+        if (Current.Merges.Any(m => (m.Intersects(source) && !ContainsRange(source, m)) ||
+            (m.Intersects(target) && !ContainsRange(source, m))) ||
             Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom,
                 t.Right).Intersects(source) || new CellRange(t.Top, t.Left, t.Bottom, t.Right).Intersects(target)))
             throw new InvalidOperationException("結合セルまたはテーブルを含む範囲は移動できません。");
@@ -33,6 +34,8 @@ sealed partial class WorksheetEngine
         bool columns = top == 0 && bottom == 1048575;
         if (Current.Objects.Any(item => source.Contains(item.Row, item.Col) || target.Contains(item.Row, item.Col)))
             throw new InvalidOperationException("図形や画像を含む範囲は移動できません。");
+        Current.Merges = Current.Merges.Select(m => ContainsRange(source, m)
+            ? new CellRange(m.Top + dr, m.Left + dc, m.Bottom + dr, m.Right + dc) : m).ToList();
         MoveDictionary(Current.Cells, source, target, dr, dc, swap);
         MoveDictionary(Current.Fonts, source, target, dr, dc, swap);
         if (rows) MoveDimensions(Current.RowHeights, top, bottom, dr, swap);
@@ -56,7 +59,7 @@ sealed partial class WorksheetEngine
             ? new(Math.Min(start, destination), left, Math.Max(end, destination + count - 1), right)
             : new(top, Math.Min(start, destination), bottom, Math.Max(end, destination + count - 1));
         EnsureVisibleRows($"{Address(affected.Top, affected.Left)}:{Address(affected.Bottom, affected.Right)}");
-        if (Current.Merges.Any(m => m.Intersects(affected)) || Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom,
+        if (Current.Merges.Any(m => m.Intersects(affected) && !ContainsRange(affected, m)) || Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom,
             t.Right).Intersects(affected)))
             throw new InvalidOperationException("結合セルまたはテーブルを含む範囲は移動できません。");
         if (Current.Cells.Values.Any(value => value.StartsWith('='))) throw new InvalidOperationException("数式を含むシートでは範囲を移動できません。");
@@ -67,6 +70,17 @@ sealed partial class WorksheetEngine
             : offset < 0 && index >= insertion && index < start ? index + count : index;
         (int Row, int Col) MapCell((int Row, int Col) cell) => !affected.Contains(cell.Row, cell.Col) ? cell
             : vertical ? (Map(cell.Row), cell.Col) : (cell.Row, Map(cell.Col));
+        List<CellRange> mappedMerges = [];
+        foreach (CellRange merge in Current.Merges)
+        {
+            if (!merge.Intersects(affected)) { mappedMerges.Add(merge); continue; }
+            (int mt, int ml) = MapCell((merge.Top, merge.Left));
+            (int mb, int mr) = MapCell((merge.Bottom, merge.Right));
+            if (mb - mt != merge.Bottom - merge.Top || mr - ml != merge.Right - merge.Left)
+                throw new InvalidOperationException("結合セルを分割する位置には移動できません。");
+            mappedMerges.Add(new CellRange(mt, ml, mb, mr));
+        }
+        Current.Merges = mappedMerges;
         Current.Cells = Current.Cells.ToDictionary(pair => MapCell(pair.Key), pair => pair.Value);
         Current.Fonts = Current.Fonts.ToDictionary(pair => MapCell(pair.Key), pair => pair.Value);
         if (vertical && left == 0 &&
@@ -78,6 +92,9 @@ sealed partial class WorksheetEngine
         (int activeRow, int activeCol) = ParseCell(Current.Active);
         Current.Active = Address(activeRow + dr, activeCol + dc);
     }
+
+    static bool ContainsRange(CellRange outer, CellRange inner) =>
+        outer.Contains(inner.Top, inner.Left) && outer.Contains(inner.Bottom, inner.Right);
 
     static void MoveDictionary<T>(Dictionary<(int Row, int Col), T> items, CellRange source, CellRange target, int dr, int dc, bool swap)
     {

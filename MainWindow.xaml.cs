@@ -96,6 +96,7 @@ public sealed partial class MainWindow : Window
         foreach (string font in InstalledFonts()) FontNameInput.Items.Add(font);
         foreach (string size in new[] { "8", "9", "10", "11", "12", "14", "16", "18", "20", "22", "24", "28", "36", "48",
             "72" }) FontSizeInput.Items.Add(size);
+        SetFontInputs("Yu Gothic", "11");
         updatingFont = false;
         updatingScroll = false;
         scrollTimer.Tick += ScrollTimer_Tick;
@@ -176,6 +177,10 @@ public sealed partial class MainWindow : Window
         dataSource?.SendAsync(method, parameters) ?? Task.FromException<JsonElement>(
             new InvalidOperationException("データ提供側が接続されていません。"));
 
-    Task<JsonElement> ExecuteAsync(string command, object parameters) =>
-        SendAsync("engine.execute", new { command, @params = parameters });
+    async Task<JsonElement> ExecuteAsync(string command, object parameters)
+    {
+        JsonElement result = await SendAsync("engine.execute", new { command, @params = parameters });
+        UpdateHistoryButtons();
+        return result;
+    }
 }

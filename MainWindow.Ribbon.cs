@@ -46,7 +46,9 @@ public sealed partial class MainWindow
             await RunAsync(async () =>
             {
                 await CommitInputAsync(); await ExecuteAsync(command,
-                new { }); dirty = true; await RefreshAsync(); FocusCell(selectionLead);
+                new { }); dirty = true; await RefreshAsync(refreshSheets: false, updateFontStyles: true,
+                    preserveDrawings: command is "home.alignLeft" or "home.alignCenter" or "home.alignRight" or
+                        "home.alignTop" or "home.alignMiddle" or "home.alignBottom"); FocusCell(selectionLead);
             });
     }
     async void NumberFormat_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -281,7 +283,7 @@ public sealed partial class MainWindow
         for (int i = 0; i < (shapes.Length + 4) / 5; i++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         panel.Children.Add(grid); flyout.Content = panel; flyout.ShowAt(anchor);
     }
-    void FormulaInput_TextChanged(object sender, TextChangedEventArgs e) { if (!updatingInput) { dirty = true; inputPending = true; } }
+    void FormulaInput_TextChanged(object sender, TextChangedEventArgs e) { if (!updatingInput) { dirty = true; inputPending = true; UpdateHistoryButtons(); } }
     async void FormulaInput_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         bool alt = (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
@@ -321,21 +323,12 @@ public sealed partial class MainWindow
         if (!inputPending) return;
         await ExecuteAsync("cell.set", new { cell = activeCell, input = FormulaInput.Text });
         inputPending = false;
+        UpdateHistoryButtons();
         viewportDirty = true;
     }
     Task ApplyAsync() => RunAsync(async () => { await CommitInputAsync(); await RefreshAsync(); });
-    async void Undo_Click(object sender,
-        RoutedEventArgs e) => await RunAsync(async () =>
-        {
-            await CommitInputAsync(); await ExecuteAsync("edit.undo",
-            new { }); dirty = true; await RefreshAsync();
-        });
-    async void Redo_Click(object sender,
-        RoutedEventArgs e) => await RunAsync(async () =>
-        {
-            await CommitInputAsync(); await ExecuteAsync("edit.redo",
-            new { }); dirty = true; await RefreshAsync();
-        });
+    async void Undo_Click(object sender, RoutedEventArgs e) => await RunAsync(() => ApplyHistoryAsync(false));
+    async void Redo_Click(object sender, RoutedEventArgs e) => await RunAsync(() => ApplyHistoryAsync(true));
     async void Previous_Click(object sender,
         RoutedEventArgs e) => await RunAsync(async () =>
         {

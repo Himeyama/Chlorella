@@ -14,7 +14,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
@@ -59,4 +59,15 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+  <Target Name="CopyUnpackagedWinUIResourcesToPublish" AfterTargets="Publish"
+          Condition="'$(WindowsPackageType)' == 'None' and '$(PublishSingleFile)' != 'true'">
+    <Error Condition="'$(ProjectPriFullPath)' == '' or !Exists('$(ProjectPriFullPath)')"
+           Text="The WinUI resource index was not found in the build output." />
+    <ItemGroup>
+      <_WinUIXbf Include="$(TargetDir)**\*.xbf" Exclude="$(PublishDir)**\*;$(TargetDir)publish\**\*" />
+    </ItemGroup>
+    <Error Condition="'@(_WinUIXbf)' == ''" Text="The compiled XAML files were not found in the build output." />
+    <Copy SourceFiles="$(ProjectPriFullPath)" DestinationFiles="$(PublishDir)$(ProjectPriFileName)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WinUIXbf)" DestinationFiles="@(_WinUIXbf->'$(PublishDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

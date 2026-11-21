@@ -10,3 +10,6 @@ TestResults/
 **/tmp/
 **/__pycache__/
 *.pyc
+
+# Release artifacts
+artifacts/

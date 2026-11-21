@@ -22,13 +22,15 @@ sealed partial class WorksheetEngine
             string target = (string?)relation.Attribute("Target") ?? throw new InvalidDataException("ファイルの参照が無効です。");
             string type = (string?)relation.Attribute("Type") ?? "";
             Uri resolved = new(new Uri("http://localhost/" + part), target);
-            if (resolved.Host != "localhost" || resolved.Scheme != "http" || resolved.Query.Length != 0 || resolved.Fragment.Length != 0) throw new InvalidDataException("ファイルの参照が無効です。");
+            if (resolved.Host != "localhost" || resolved.Scheme != "http" || resolved.Query.Length != 0 ||
+                resolved.Fragment.Length != 0) throw new InvalidDataException("ファイルの参照が無効です。");
             result.Add(id, new(type, Uri.UnescapeDataString(resolved.AbsolutePath.TrimStart('/'))));
         }
         return result;
     }
 
-    static (int Imported, int Skipped, int SkippedFilters) ImportTableParts(ZipArchive zip, string worksheetPart, XDocument worksheet, Sheet sheet)
+    static (int Imported, int Skipped, int SkippedFilters) ImportTableParts(ZipArchive zip, string worksheetPart,
+        XDocument worksheet, Sheet sheet)
     {
         XElement[] tableParts = worksheet.Root?.Element(MainNs + "tableParts")?.Elements(MainNs + "tablePart").ToArray() ?? [];
         if (tableParts.Length == 0) return (0, 0, 0);
@@ -38,13 +40,17 @@ sealed partial class WorksheetEngine
         foreach (XElement part in tableParts)
         {
             string id = (string?)part.Attribute(RelNs + "id") ?? "";
-            if (!relations.TryGetValue(id, out PackageRelationship? relation) || relation.Type != RelNs.NamespaceName + "/table") throw new InvalidDataException("テーブルの参照が無効です。");
+            if (!relations.TryGetValue(id,
+                out PackageRelationship? relation) ||
+                    relation.Type != RelNs.NamespaceName + "/table") throw new InvalidDataException("テーブルの参照が無効です。");
             XElement table = ReadXml(zip, relation.Target).Root ?? throw new InvalidDataException("テーブルのデータが無効です。");
             if (table.Name != MainNs + "table") throw new InvalidDataException("テーブルのデータが無効です。");
             (int top, int left, int bottom, int right) = ParseRange((string?)table.Attribute("ref") ?? "");
             int headers = (int?)table.Attribute("headerRowCount") ?? 1;
             CellRange range = new(top, left, bottom, right);
-            if (headers is < 0 or > 1 || (long)(bottom - top + 1) * (right - left + 1) > 100000 || sheet.Merges.Any(merge => merge.Intersects(range)) || sheet.Tables.Any(other => new CellRange(other.Top, other.Left, other.Bottom, other.Right).Intersects(range)))
+            if (headers is < 0 or > 1 || (long)(bottom - top + 1) * (right - left + 1) > 100000 ||
+                sheet.Merges.Any(merge => merge.Intersects(range)) || sheet.Tables.Any(other => new CellRange(other.Top,
+                    other.Left, other.Bottom, other.Right).Intersects(range)))
             {
                 skipped++;
                 continue;
@@ -54,7 +60,14 @@ sealed partial class WorksheetEngine
             {
                 int offset = (int?)filterColumn.Attribute("colId") ?? -1;
                 XElement? values = filterColumn.Element(MainNs + "filters");
-                if (headers != 1 || offset < 0 || offset > right - left || values is null || filterColumn.Elements().Any(child => child != values) || values.Elements().Any(child => child.Name != MainNs + "filter" || child.Attribute("val") is null) || filters.Any(filter => filter.Column == left + offset)) { skippedFilters++; continue; }
+                if (headers != 1 || offset < 0 || offset > right - left || values is null ||
+                    filterColumn.Elements().Any(child => child != values) ||
+                        values.Elements().Any(child => child.Name != MainNs + "filter" || child.Attribute("val") is null) ||
+                            filters.Any(filter => filter.Column == left + offset))
+                {
+                    skippedFilters++;
+                    continue;
+                }
                 List<string> accepted = [];
                 if ((string?)values.Attribute("blank") is "1" or "true") accepted.Add("");
                 foreach (XElement filter in values.Elements(MainNs + "filter"))

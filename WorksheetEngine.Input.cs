@@ -18,7 +18,11 @@ sealed partial class WorksheetEngine
             char c = input[i];
             if (c == '"')
             {
-                if (quoted && i + 1 < input.Length && input[i + 1] == '"') { i++; continue; }
+                if (quoted && i + 1 < input.Length && input[i + 1] == '"')
+                {
+                    i++;
+                    continue;
+                }
                 quoted = !quoted;
             }
             else if (!quoted && c == '(') depth++;

@@ -2,7 +2,8 @@ namespace Chlorella;
 
 public sealed partial class MainWindow
 {
-    static bool IsBooleanCell(string value) => value.Equals("TRUE", StringComparison.OrdinalIgnoreCase) || value.Equals("FALSE", StringComparison.OrdinalIgnoreCase);
+    static bool IsBooleanCell(string value) => value.Equals("TRUE",
+        StringComparison.OrdinalIgnoreCase) || value.Equals("FALSE", StringComparison.OrdinalIgnoreCase);
     const string CheckedGlyph = "\uE73A";
     const string UncheckedGlyph = "\uE739";
     static string BooleanGlyph(string value) => value.Equals("TRUE", StringComparison.OrdinalIgnoreCase) ? CheckedGlyph : UncheckedGlyph;

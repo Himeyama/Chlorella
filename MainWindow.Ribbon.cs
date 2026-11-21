@@ -21,7 +21,8 @@ public sealed partial class MainWindow
     void RibbonSelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs e) => UpdateRibbon();
     void UpdateRibbon()
     {
-        if (FileRibbon is null || HomeRibbon is null || InsertRibbon is null || ViewRibbon is null || DataRibbon is null || ShapeRibbon is null || RibbonSelector is null) return;
+        if (FileRibbon is null || HomeRibbon is null || InsertRibbon is null || ViewRibbon is null || DataRibbon is null ||
+            ShapeRibbon is null || RibbonSelector is null) return;
         string? tab = RibbonSelector.SelectedItem?.Tag as string;
         FileRibbon.Visibility = !ribbonCollapsed && tab == "File" ? Visibility.Visible : Visibility.Collapsed;
         HomeRibbon.Visibility = !ribbonCollapsed && tab == "Home" ? Visibility.Visible : Visibility.Collapsed;
@@ -42,12 +43,20 @@ public sealed partial class MainWindow
     {
         if (sender is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton toggle) toggle.IsChecked = toggle.IsChecked != true;
         if (sender is FrameworkElement { Tag: string command })
-            await RunAsync(async () => { await CommitInputAsync(); await ExecuteAsync(command, new { }); dirty = true; await RefreshAsync(); FocusCell(selectionLead); });
+            await RunAsync(async () =>
+            {
+                await CommitInputAsync(); await ExecuteAsync(command,
+                new { }); dirty = true; await RefreshAsync(); FocusCell(selectionLead);
+            });
     }
     async void NumberFormat_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (updatingNumberFormat || sender is not ComboBox { SelectedItem: ComboBoxItem { Tag: string format } }) return;
-        await RunAsync(async () => { await CommitInputAsync(); await ExecuteAsync("home.numberFormat", new { format }); dirty = true; await RefreshAsync(); FocusCell(selectionLead); });
+        await RunAsync(async () =>
+        {
+            await CommitInputAsync(); await ExecuteAsync("home.numberFormat",
+            new { format }); dirty = true; await RefreshAsync(); FocusCell(selectionLead);
+        });
     }
     async void FontName_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -58,7 +67,8 @@ public sealed partial class MainWindow
     {
         name = name.Trim();
         if (name.Length == 0) throw new FormatException("書体を入力してください。");
-        await CommitInputAsync(); await ExecuteAsync("home.fontName", new { name }); dirty = true; await RefreshAsync(); FocusCell(selectionLead);
+        await CommitInputAsync(); await ExecuteAsync("home.fontName",
+            new { name }); dirty = true; await RefreshAsync(); FocusCell(selectionLead);
     });
     async void FontSize_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -67,15 +77,18 @@ public sealed partial class MainWindow
     async void FontSize_TextSubmitted(ComboBox sender, ComboBoxTextSubmittedEventArgs e) => await ApplyFontSizeAsync(e.Text);
     Task ApplyFontSizeAsync(string text) => RunAsync(async () =>
     {
-        if (!double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out double size) || !double.IsFinite(size) || size < 1 || size > 409)
+        if (!double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture,
+            out double size) || !double.IsFinite(size) || size < 1 || size > 409)
             throw new FormatException("フォントサイズには 1 から 409 までの数値を入力してください。");
-        await CommitInputAsync(); await ExecuteAsync("home.fontSize", new { size }); dirty = true; await RefreshAsync(refreshSheets: false, updateFontStyles: true); FocusCell(selectionLead);
+        await CommitInputAsync(); await ExecuteAsync("home.fontSize",
+            new { size }); dirty = true; await RefreshAsync(refreshSheets: false, updateFontStyles: true); FocusCell(selectionLead);
     });
     async void IncreaseFont_Click(object sender, RoutedEventArgs e) => await StepFontSizeAsync(true);
     async void DecreaseFont_Click(object sender, RoutedEventArgs e) => await StepFontSizeAsync(false);
     Task StepFontSizeAsync(bool increase)
     {
-        if (!double.TryParse(FontSizeInput.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out double current))
+        if (!double.TryParse(FontSizeInput.Text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.CurrentCulture, out double current))
             return RunAsync(() => throw new FormatException("フォントサイズを確認してください。"));
         double[] sizes = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 72];
         double target = increase ? sizes.FirstOrDefault(size => size > current, Math.Min(409, current + 1))
@@ -85,7 +98,11 @@ public sealed partial class MainWindow
     async void Merge_Click(object sender, RoutedEventArgs e)
     {
         MergeButton.IsChecked = activeCellMerged;
-        await RunAsync(async () => { await CommitInputAsync(); await ExecuteAsync(activeCellMerged ? "home.unmergeCells" : "home.mergeCells", new { }); dirty = true; await RefreshAsync(); FocusCell(selectionLead); });
+        await RunAsync(async () =>
+            {
+                await CommitInputAsync(); await ExecuteAsync(activeCellMerged ? "home.unmergeCells" : "home.mergeCells",
+                new { }); dirty = true; await RefreshAsync(); FocusCell(selectionLead);
+            });
     }
     async void ColorApply_Click(object sender, RoutedEventArgs e)
     {
@@ -114,7 +131,11 @@ public sealed partial class MainWindow
                 if (paletteTheme.ValueKind != JsonValueKind.Array || index >= paletteTheme.GetArrayLength()) continue;
                 JsonElement encoded = JsonSerializer.SerializeToElement(new { Theme = new[] { index, (int)(tint * 1000) } });
                 if (ColorBrush(encoded, paletteTheme) is not Microsoft.UI.Xaml.Media.SolidColorBrush brush) continue;
-                AddColorSwatch(themeGrid, row, col, brush.Color, $"テーマの色 {index + 1}、色調 {tint:P0}", new { theme = index, tint }, target, flyout);
+                AddColorSwatch(themeGrid, row, col, brush.Color, $"テーマの色 {index + 1}、色調 {tint:P0}", new
+                {
+                    theme = index,
+                    tint
+                }, target, flyout);
             }
         }
         panel.Children.Add(themeGrid);
@@ -130,7 +151,14 @@ public sealed partial class MainWindow
             AddColorSwatch(standardGrid, 0, col, color, $"標準の色 {hex}", hex, target, flyout);
         }
         panel.Children.Add(standardGrid);
-        Button clear = new() { Content = target.StartsWith("tab:") ? "色を解除" : target is "fill" or "shapeFill" ? "塗りつぶしなし" : target == "shapeLine" ? "輪郭なし" : "文字色を自動にする", HorizontalAlignment = HorizontalAlignment.Stretch };
+        Button clear = new()
+        {
+            Content =
+            target.StartsWith("tab:") ? "色を解除"
+            : target is "fill" or "shapeFill" ? "塗りつぶしなし"
+            : target == "shapeLine" ? "輪郭なし" : "文字色を自動にする",
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
         clear.Click += async (_, _) => { flyout.Hide(); await ApplyColorAsync(target, target == "font" ? "auto" : "none", null); };
         panel.Children.Add(clear);
         Button custom = new() { Content = "その他の色…", HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -141,9 +169,13 @@ public sealed partial class MainWindow
     }
     void AddColorSwatch(Grid grid, int row, int column, Windows.UI.Color color, string label, object value, string target, Flyout flyout)
     {
-        Button button = new() { Width = 26, Height = 26,
+        Button button = new()
+        {
+            Width = 26,
+            Height = 26,
             Style = (Style)RootGrid.Resources["ColorSwatchButtonStyle"],
-            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(color) };
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(color)
+        };
         AutomationProperties.SetName(button, label);
         ToolTipService.SetToolTip(button, label);
         button.Click += async (_, _) => { flyout.Hide(); await ApplyColorAsync(target, value, color); };
@@ -152,10 +184,20 @@ public sealed partial class MainWindow
     async Task ShowCustomColorAsync(string target)
     {
         ColorPicker picker = new() { IsAlphaEnabled = false, IsAlphaSliderVisible = false, IsAlphaTextInputVisible = false };
-        string colorLabel = target.StartsWith("tab:") ? "シート見出しの色" : target == "fill" ? "セルの塗りつぶし" : target == "shapeFill" ? "図形の塗りつぶし" : target == "shapeLine" ? "図形の輪郭" : "文字の色";
+        string colorLabel = target.StartsWith(
+            "tab:") ? "シート見出しの色"
+            : target == "fill" ? "セルの塗りつぶし"
+            : target == "shapeFill" ? "図形の塗りつぶし"
+            : target == "shapeLine" ? "図形の輪郭" : "文字の色";
         AutomationProperties.SetName(picker, colorLabel);
-        ContentDialog dialog = new() { Title = colorLabel, Content = picker,
-            PrimaryButtonText = "適用", CloseButtonText = "キャンセル", XamlRoot = RootGrid.XamlRoot };
+        ContentDialog dialog = new()
+        {
+            Title = colorLabel,
+            Content = picker,
+            PrimaryButtonText = "適用",
+            CloseButtonText = "キャンセル",
+            XamlRoot = RootGrid.XamlRoot
+        };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         Windows.UI.Color color = picker.Color;
         await ApplyColorAsync(target, $"#{color.R:X2}{color.G:X2}{color.B:X2}", color);
@@ -172,7 +214,11 @@ public sealed partial class MainWindow
         else await ExecuteAsync(target == "fill" ? "home.fillColor" : "home.fontColor", new { color = value });
         if (target is "fill" or "font" && color is Windows.UI.Color selected)
         {
-            if (target == "fill") { currentFillColor = value; FillColorSwatch.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(selected); }
+            if (target == "fill")
+            {
+                currentFillColor = value; FillColorSwatch.Fill =
+                new Microsoft.UI.Xaml.Media.SolidColorBrush(selected);
+            }
             else { currentFontColor = value; FontColorSwatch.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(selected); }
         }
         dirty = true; await RefreshAsync(); if (selectedShape is uint selectedId) FocusShape(selectedId); else FocusCell(selectionLead);
@@ -180,7 +226,14 @@ public sealed partial class MainWindow
     async void ChangeShape_Click(object sender, RoutedEventArgs e)
     {
         if (selectedShape is not uint id || sender is not FrameworkElement { Tag: string type }) return;
-        await RunAsync(async () => { await ExecuteAsync("shape.change", new { id, type }); dirty = true; await RefreshAsync(); FocusShape(id); });
+        await RunAsync(async () =>
+        {
+            await ExecuteAsync("shape.change", new
+            {
+                id,
+                type
+            }); dirty = true; await RefreshAsync(); FocusShape(id);
+        });
     }
     void ShapeGallery_Click(object sender, RoutedEventArgs e)
     {
@@ -197,18 +250,28 @@ public sealed partial class MainWindow
         for (int i = 0; i < shapes.Length; i++)
         {
             (string Kind, string Label) item = shapes[i];
-            Button choice = new() { Width = 42, Height = 42, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center,
-                Content = ShapeGalleryIcon.Create(item.Kind) };
+            Button choice = new()
+            {
+                Width = 42,
+                Height = 42,
+                Padding = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Content = ShapeGalleryIcon.Create(item.Kind)
+            };
             AutomationProperties.SetName(choice, item.Label); ToolTipService.SetToolTip(choice, item.Label);
             choice.Click += async (_, _) =>
             {
                 flyout.Hide();
-                await RunAsync(async () => {
+                await RunAsync(async () =>
+                {
                     await CommitInputAsync();
-                    if (mode == "change") {
+                    if (mode == "change")
+                    {
                         if (selectedShape is not uint id) throw new InvalidOperationException("図形を選択してください。");
                         await ExecuteAsync("shape.change", new { id, type = item.Kind });
-                    } else await ExecuteAsync("insert.shape", new { kind = item.Kind, at = activeCell });
+                    }
+                    else await ExecuteAsync("insert.shape", new { kind = item.Kind, at = activeCell });
                     dirty = true; await RefreshAsync();
                     if (mode == "change" && selectedShape is uint shapeId) FocusShape(shapeId); else FocusCell(activeCell);
                 });
@@ -225,7 +288,12 @@ public sealed partial class MainWindow
         if (e.Key == VirtualKey.Enter && !alt)
         {
             e.Handled = true;
-            await RunAsync(async () => { await CommitInputAsync(); (int row, int col) = ParseCell(activeCell); row = await MoveVisibleRowAsync(row, 1, 1); EnsureVisible(row, col); string next = CellAddress(row, col); await SelectRangeAsync(next, next); });
+            await RunAsync(async () =>
+            {
+                await CommitInputAsync(); (int row,
+                int col) = ParseCell(activeCell); row = await MoveVisibleRowAsync(row, 1, 1); EnsureVisible(row,
+                    col); string next = CellAddress(row, col); await SelectRangeAsync(next, next);
+            });
         }
     }
     void FormulaToggle_Click(object sender, RoutedEventArgs e)
@@ -241,7 +309,11 @@ public sealed partial class MainWindow
     {
         if (e.Key != VirtualKey.Enter) return;
         e.Handled = true;
-        await RunAsync(async () => { (int row, int col) = ParseCell(AddressInput.Text); string address = CellAddress(row, col); EnsureVisible(row, col); await SelectRangeAsync(address, address); });
+        await RunAsync(async () =>
+        {
+            (int row, int col) = ParseCell(AddressInput.Text); string address = CellAddress(row,
+            col); EnsureVisible(row, col); await SelectRangeAsync(address, address);
+        });
     }
     void AddressInput_LostFocus(object sender, RoutedEventArgs e) { AddressInput.Text = activeCell; }
     async Task CommitInputAsync()
@@ -252,8 +324,28 @@ public sealed partial class MainWindow
         viewportDirty = true;
     }
     Task ApplyAsync() => RunAsync(async () => { await CommitInputAsync(); await RefreshAsync(); });
-    async void Undo_Click(object sender, RoutedEventArgs e) => await RunAsync(async () => { await CommitInputAsync(); await ExecuteAsync("edit.undo", new { }); dirty = true; await RefreshAsync(); });
-    async void Redo_Click(object sender, RoutedEventArgs e) => await RunAsync(async () => { await CommitInputAsync(); await ExecuteAsync("edit.redo", new { }); dirty = true; await RefreshAsync(); });
-    async void Previous_Click(object sender, RoutedEventArgs e) => await RunAsync(async () => { await CommitInputAsync(); firstRow = Math.Max(1, firstRow - PageRows); await RefreshAsync(); });
-    async void Next_Click(object sender, RoutedEventArgs e) => await RunAsync(async () => { await CommitInputAsync(); firstRow = Math.Min(1_048_576, firstRow + PageRows); await RefreshAsync(); });
+    async void Undo_Click(object sender,
+        RoutedEventArgs e) => await RunAsync(async () =>
+        {
+            await CommitInputAsync(); await ExecuteAsync("edit.undo",
+            new { }); dirty = true; await RefreshAsync();
+        });
+    async void Redo_Click(object sender,
+        RoutedEventArgs e) => await RunAsync(async () =>
+        {
+            await CommitInputAsync(); await ExecuteAsync("edit.redo",
+            new { }); dirty = true; await RefreshAsync();
+        });
+    async void Previous_Click(object sender,
+        RoutedEventArgs e) => await RunAsync(async () =>
+        {
+            await CommitInputAsync(); firstRow = Math.Max(1,
+            firstRow - PageRows); await RefreshAsync();
+        });
+    async void Next_Click(object sender,
+        RoutedEventArgs e) => await RunAsync(async () =>
+        {
+            await CommitInputAsync(); firstRow = Math.Min(1_048_576,
+            firstRow + PageRows); await RefreshAsync();
+        });
 }

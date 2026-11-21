@@ -28,12 +28,22 @@ public sealed partial class MainWindow
                 continue;
             }
             bool wasBoolean = button.Content is FontIcon;
-            TextBlock text = button.Content as TextBlock ?? new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, IsHitTestVisible = false };
+            TextBlock text = button.Content as TextBlock ?? new TextBlock
+            {
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                IsHitTestVisible = false
+            };
             if (wasBoolean)
             {
                 button.Content = text;
                 button.Padding = new Thickness(5 + alignment.GetProperty("indent").GetInt32() * 12, 0, 5, 0);
-                button.VerticalContentAlignment = alignment.GetProperty("v").GetString() switch { "Top" => VerticalAlignment.Top, "Bottom" => VerticalAlignment.Bottom, _ => VerticalAlignment.Center };
+                button.VerticalContentAlignment = alignment.GetProperty("v").GetString() switch
+                {
+                    "Top" =>
+                    VerticalAlignment.Top,
+                    "Bottom" => VerticalAlignment.Bottom,
+                    _ => VerticalAlignment.Center
+                };
                 text.TextWrapping = alignment.GetProperty("wrap").GetBoolean() ? TextWrapping.Wrap : TextWrapping.NoWrap;
             }
             if (text.Text != value) text.Text = value;
@@ -44,9 +54,13 @@ public sealed partial class MainWindow
                 if (text.FontFamily.Source != family) text.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily(family);
                 double size = font.GetProperty("size").GetDouble() * 96 / 72;
                 if (text.FontSize != size) text.FontSize = size;
-                Windows.UI.Text.FontWeight weight = font.GetProperty("bold").GetBoolean() ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal;
-                Windows.UI.Text.FontStyle fontStyle = font.GetProperty("italic").GetBoolean() ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal;
-                Windows.UI.Text.TextDecorations decoration = font.GetProperty("underline").GetString() != "None" ? Windows.UI.Text.TextDecorations.Underline : Windows.UI.Text.TextDecorations.None;
+                Windows.UI.Text.FontWeight weight =
+                    font.GetProperty("bold").GetBoolean() ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal;
+                Windows.UI.Text.FontStyle fontStyle =
+                    font.GetProperty("italic").GetBoolean() ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal;
+                Windows.UI.Text.TextDecorations decoration =
+                    font.GetProperty("underline").GetString(
+                        ) != "None" ? Windows.UI.Text.TextDecorations.Underline : Windows.UI.Text.TextDecorations.None;
                 if (text.FontWeight.Weight != weight.Weight) text.FontWeight = weight;
                 if (text.FontStyle != fontStyle) text.FontStyle = fontStyle;
                 if (text.TextDecorations != decoration) text.TextDecorations = decoration;
@@ -75,6 +89,9 @@ public sealed partial class MainWindow
             FontNameInput.Text = font.GetProperty("name").GetString() ?? "";
             FontSizeInput.Text = font.GetProperty("size").GetDouble().ToString("0.##", CultureInfo.InvariantCulture);
         }
-        finally { updatingFont = false; }
+        finally
+        {
+            updatingFont = false;
+        }
     }
 }

@@ -22,7 +22,8 @@ sealed partial class WorksheetEngine
             if (row.Attribute("ht") is null) continue;
             int index = (int?)row.Attribute("r") ?? 0;
             double height = ((double?)row.Attribute("ht") ?? 0) / 0.75;
-            if (index < 1 || index > 1048576 || !double.IsFinite(height) || height < 0 || height > 10000) throw new InvalidDataException("行の高さが無効です。");
+            if (index < 1 || index > 1048576 || !double.IsFinite(height) || height < 0 ||
+                height > 10000) throw new InvalidDataException("行の高さが無効です。");
             if (height > 0) sheet.RowHeights[index - 1] = height;
         }
     }

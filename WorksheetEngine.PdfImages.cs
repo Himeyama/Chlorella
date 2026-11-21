@@ -56,12 +56,21 @@ sealed partial class WorksheetEngine
             if (chunk == "IHDR")
             {
                 if (size != 13) throw new InvalidDataException("PNG 画像が壊れています。");
-                width = checked((int)BinaryPrimitives.ReadUInt32BigEndian(content)); height = checked((int)BinaryPrimitives.ReadUInt32BigEndian(content[4..]));
+                width = checked((int)BinaryPrimitives.ReadUInt32BigEndian(content));
+                height = checked((int)BinaryPrimitives.ReadUInt32BigEndian(content[4..]));
                 type = content[9];
-                depth = content[8]; interlace = content[12];
+                depth = content[8];
+                interlace = content[12];
                 channels = type switch { 0 => 1, 2 => 3, 3 => 1, 4 => 2, 6 => 4, _ => 0 };
-                bool validDepth = type switch { 0 => depth is 1 or 2 or 4 or 8 or 16, 3 => depth is 1 or 2 or 4 or 8, 2 or 4 or 6 => depth is 8 or 16, _ => false };
-                if (width <= 0 || height <= 0 || (long)width * height > 16_000_000 || !validDepth || content[10] != 0 || content[11] != 0 || interlace > 1)
+                bool validDepth = type switch
+                {
+                    0 => depth is 1 or 2 or 4 or 8 or 16,
+                    3 => depth is 1 or 2 or 4 or 8,
+                    2 or 4 or 6 => depth is 8 or 16,
+                    _ => false
+                };
+                if (width <= 0 || height <= 0 || (long)width * height > 16_000_000 || !validDepth || content[10] != 0 ||
+                    content[11] != 0 || interlace > 1)
                     throw new NotSupportedException("この PNG 形式は PDF 出力できません。");
             }
             else if (chunk == "PLTE") palette = content.ToArray();
@@ -70,7 +79,8 @@ sealed partial class WorksheetEngine
             else if (chunk == "IEND") break;
             position += (int)size + 12;
         }
-        if (channels == 0 || compressed.Length == 0 || (type == 3 && (palette is null || palette.Length % 3 != 0))) throw new InvalidDataException("PNG 画像が壊れています。");
+        if (channels == 0 || compressed.Length == 0 || (type == 3 && (palette is null ||
+            palette.Length % 3 != 0))) throw new InvalidDataException("PNG 画像が壊れています。");
         bool gray = type is 0 or 4;
         int count = checked(width * height), colorChannels = gray ? 1 : 3;
         byte[] colors = new byte[checked(count * colorChannels)], alpha = new byte[count];
@@ -78,7 +88,8 @@ sealed partial class WorksheetEngine
         compressed.Position = 0;
         using (ZLibStream decoder = new(compressed, CompressionMode.Decompress, true))
         {
-            (int X, int Y, int StepX, int StepY)[] passes = interlace == 0 ? [(0, 0, 1, 1)] : [(0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)];
+            (int X, int Y, int StepX, int StepY)[] passes = interlace == 0 ? [(0, 0, 1, 1)] : [(0, 0, 8, 8), (4, 0, 8, 8),
+                (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)];
             foreach ((int xStart, int yStart, int stepX, int stepY) in passes)
             {
                 int passWidth = Math.Max(0, (width - xStart + stepX - 1) / stepX);
@@ -95,7 +106,15 @@ sealed partial class WorksheetEngine
                     {
                         int left = x >= byteWidth ? current[x - byteWidth] : 0;
                         int up = previous[x], upperLeft = x >= byteWidth ? previous[x - byteWidth] : 0;
-                        int prediction = filter switch { 0 => 0, 1 => left, 2 => up, 3 => (left + up) / 2, _ => Paeth(left, up, upperLeft) };
+                        int prediction = filter switch
+                        {
+                            0 => 0,
+                            1 => left,
+                            2 => up,
+                            3 => (left + up) / 2,
+                            _ => Paeth(left,
+                            up, upperLeft)
+                        };
                         current[x] = unchecked((byte)(current[x] + prediction));
                     }
                     for (int x = 0; x < passWidth; x++)
@@ -107,10 +126,12 @@ sealed partial class WorksheetEngine
                 }
             }
         }
-        return new(width, height, gray ? "DeviceGray" : "DeviceRGB", CompressPdfImage(colors), hasAlpha ? CompressPdfImage(alpha) : null, false);
+        return new(width, height, gray ? "DeviceGray" : "DeviceRGB", CompressPdfImage(colors),
+            hasAlpha ? CompressPdfImage(alpha) : null, false);
     }
 
-    static void WritePngPixel(byte[] row, int x, int depth, int channels, int type, byte[]? palette, byte[]? transparency, byte[] colors, byte[] alpha, int destination)
+    static void WritePngPixel(byte[] row, int x, int depth, int channels, int type, byte[]? palette, byte[]? transparency,
+        byte[] colors, byte[] alpha, int destination)
     {
         int Sample(int channel)
         {
@@ -126,20 +147,27 @@ sealed partial class WorksheetEngine
         {
             int p = first * 3;
             if (palette is null || p + 2 >= palette.Length) throw new InvalidDataException("PNG のパレットが無効です。");
-            colors[destination * 3] = palette[p]; colors[destination * 3 + 1] = palette[p + 1]; colors[destination * 3 + 2] = palette[p + 2];
+            colors[destination * 3] = palette[p];
+            colors[destination * 3 + 1] = palette[p + 1];
+            colors[destination * 3 + 2] = palette[p + 2];
             alpha[destination] = transparency is not null && first < transparency.Length ? transparency[first] : (byte)255;
             return;
         }
         int colorChannels = type is 0 or 4 ? 1 : 3;
         for (int channel = 0; channel < colorChannels; channel++) colors[destination * colorChannels + channel] = Scale(Sample(channel));
         alpha[destination] = type is 4 or 6 ? Scale(Sample(channels - 1)) : (byte)255;
-        if (transparency is not null && type == 0 && transparency.Length == 2 && first == BinaryPrimitives.ReadUInt16BigEndian(transparency)) alpha[destination] = 0;
-        if (transparency is not null && type == 2 && transparency.Length == 6 && first == BinaryPrimitives.ReadUInt16BigEndian(transparency) && Sample(1) == BinaryPrimitives.ReadUInt16BigEndian(transparency.AsSpan(2)) && Sample(2) == BinaryPrimitives.ReadUInt16BigEndian(transparency.AsSpan(4))) alpha[destination] = 0;
+        if (transparency is not null && type == 0 && transparency.Length == 2 &&
+            first == BinaryPrimitives.ReadUInt16BigEndian(transparency)) alpha[destination] = 0;
+        if (transparency is not null && type == 2 && transparency.Length == 6 &&
+            first == BinaryPrimitives.ReadUInt16BigEndian(transparency) &&
+                Sample(1) == BinaryPrimitives.ReadUInt16BigEndian(transparency.AsSpan(2)) &&
+                    Sample(2) == BinaryPrimitives.ReadUInt16BigEndian(transparency.AsSpan(4))) alpha[destination] = 0;
     }
 
     static int Paeth(int left, int up, int upperLeft)
     {
-        int prediction = left + up - upperLeft, a = Math.Abs(prediction - left), b = Math.Abs(prediction - up), c = Math.Abs(prediction - upperLeft);
+        int prediction = left + up - upperLeft, a = Math.Abs(prediction - left), b = Math.Abs(prediction - up),
+            c = Math.Abs(prediction - upperLeft);
         return a <= b && a <= c ? left : b <= c ? up : upperLeft;
     }
     static byte[] CompressPdfImage(byte[] data)

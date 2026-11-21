@@ -14,9 +14,14 @@ public sealed partial class MainWindow
 {
     void AddHeader(string text, string tag, int row, int column)
     {
-        SheetHeaderButton label = new() { Content = text == "Select all" ? "◢" : text, Tag = tag,
-            Style = (Style)RootGrid.Resources["HeaderCellStyle"], HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch };
+        SheetHeaderButton label = new()
+        {
+            Content = text == "Select all" ? "◢" : text,
+            Tag = tag,
+            Style = (Style)RootGrid.Resources["HeaderCellStyle"],
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
         if (tag == "all" || tag.StartsWith("row:"))
         {
             Microsoft.UI.Xaml.Media.TranslateTransform offset = new() { X = columnScrollFraction * columnWidths[0] };
@@ -35,8 +40,16 @@ public sealed partial class MainWindow
             MenuFlyoutItem size = new() { Text = tag.StartsWith("row:") ? "行の高さ..." : "列の幅...", Icon = new FontIcon { Glyph = "\uE8A3" } };
             size.Click += async (_, _) => await SetHeaderSizeAsync(tag);
             MenuFlyoutItem insert = new() { Text = tag.StartsWith("row:") ? "行を挿入" : "列を挿入", Icon = new FontIcon { Glyph = "\uE710" } };
-            insert.Click += async (_, _) => await RunAsync(async () => { await CommitInputAsync(); await InsertHeaderAsync(tag); dirty = true; await RefreshAsync(); });
-            menu.Items.Add(size); menu.Items.Add(insert); label.ContextFlyout = menu;
+            insert.Click += async (_, _) => await RunAsync(async () =>
+            {
+                await CommitInputAsync();
+                await InsertHeaderAsync(tag);
+                dirty = true;
+                await RefreshAsync();
+            });
+            menu.Items.Add(size);
+            menu.Items.Add(insert);
+            label.ContextFlyout = menu;
         }
         Grid.SetRow(label, row);
         Grid.SetColumn(label, column);
@@ -57,13 +70,15 @@ public sealed partial class MainWindow
                 (pressedRow - 1 == selectionBounds.Bottom && position.Y >= cell.ActualHeight - 5) ||
                 (pressedCol == selectionBounds.Left && position.X <= 5) ||
                 (pressedCol == selectionBounds.Right && position.X >= cell.ActualWidth - 5);
-            if (onEdge && pressedRow - 1 >= selectionBounds.Top && pressedRow - 1 <= selectionBounds.Bottom && pressedCol >= selectionBounds.Left && pressedCol <= selectionBounds.Right)
+            if (onEdge && pressedRow - 1 >= selectionBounds.Top && pressedRow - 1 <= selectionBounds.Bottom &&
+                pressedCol >= selectionBounds.Left && pressedCol <= selectionBounds.Right)
             {
                 cell.ReleasePointerCapture(e.Pointer);
                 BeginRangeMove(e, pressedRow - 1, pressedCol, false, false);
                 return;
             }
-            if (cell.Content is FontIcon check && Math.Abs(position.X - cell.ActualWidth / 2) <= 14 && Math.Abs(position.Y - cell.ActualHeight / 2) <= 14)
+            if (cell.Content is FontIcon check && Math.Abs(position.X - cell.ActualWidth / 2) <= 14 &&
+                Math.Abs(position.Y - cell.ActualHeight / 2) <= 14)
             {
                 e.Handled = true;
                 await RunAsync(async () => await ToggleBooleanCellAsync(address, check.Glyph == CheckedGlyph));
@@ -76,11 +91,17 @@ public sealed partial class MainWindow
             if (doubleClick)
             {
                 e.Handled = true;
-                await RunAsync(async () => { await SelectRangeAsync(address, address); StartCellEdit(address, false); });
+                await RunAsync(async () =>
+                {
+                    await SelectRangeAsync(address, address);
+                    StartCellEdit(address, false);
+                });
                 return;
             }
             cell.ReleasePointerCapture(e.Pointer);
-            dragging = true; dragStart = address; dragEnd = address;
+            dragging = true;
+            dragStart = address;
+            dragEnd = address;
             if (!CellGrid.CapturePointer(e.Pointer)) dragging = false;
             if (dragging && !inputPending) UpdateDragPreview();
             e.Handled = dragging;
@@ -88,15 +109,27 @@ public sealed partial class MainWindow
     }
     void CellGrid_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (movingRange) { UpdateRangeMove(e); return; }
+        if (movingRange)
+        {
+            UpdateRangeMove(e);
+            return;
+        }
         if (resizingHeader)
         {
             bool resizingRow = resizeTag.StartsWith("row:");
             Windows.Foundation.Point resizePoint = e.GetCurrentPoint(CellGrid).Position;
             double size = Math.Max(resizingRow ? 18 : 20, resizeStart + (resizingRow ? resizePoint.Y : resizePoint.X) - resizeOrigin);
             int index = int.Parse(resizeTag[4..]) - (resizingRow ? firstRow : firstColumn);
-            if (resizingRow && index >= 0 && index < viewRows) { rowHeights[index] = size; CellGrid.RowDefinitions[index + 1].Height = new GridLength(size); }
-            if (!resizingRow && index >= 0 && index < viewColumns) { columnWidths[index] = size; CellGrid.ColumnDefinitions[index + 1].Width = new GridLength(size); }
+            if (resizingRow && index >= 0 && index < viewRows)
+            {
+                rowHeights[index] = size;
+                CellGrid.RowDefinitions[index + 1].Height = new GridLength(size);
+            }
+            if (!resizingRow && index >= 0 && index < viewColumns)
+            {
+                columnWidths[index] = size;
+                CellGrid.ColumnDefinitions[index + 1].Width = new GridLength(size);
+            }
             e.Handled = true;
             return;
         }
@@ -122,7 +155,11 @@ public sealed partial class MainWindow
     }
     async void CellGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (movingRange) { await FinishRangeMoveAsync(e); return; }
+        if (movingRange)
+        {
+            await FinishRangeMoveAsync(e);
+            return;
+        }
         if (resizingHeader)
         {
             resizingHeader = false;
@@ -134,7 +171,13 @@ public sealed partial class MainWindow
             double size = row ? rowHeights[index] : columnWidths[index];
             if (Math.Abs(size - resizeStart) < 0.01) return;
             lastHeaderEdge = null;
-            await RunAsync(async () => { await CommitInputAsync(); await ChangeHeaderSizeAsync(tag, size); dirty = true; await RefreshAsync(); });
+            await RunAsync(async () =>
+            {
+                await CommitInputAsync();
+                await ChangeHeaderSizeAsync(tag, size);
+                dirty = true;
+                await RefreshAsync();
+            });
             return;
         }
         if (selectingHeader)
@@ -155,7 +198,14 @@ public sealed partial class MainWindow
     }
     async void CellGrid_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
-        if (movingRange) { movingRange = false; ClearMovePreview(); SetStatus(""); await RunAsync(async () => await RefreshAsync(refreshSheets: false)); return; }
+        if (movingRange)
+        {
+            movingRange = false;
+            ClearMovePreview();
+            SetStatus("");
+            await RunAsync(async () => await RefreshAsync(refreshSheets: false));
+            return;
+        }
         dragging = false;
         if (resizingHeader)
         {
@@ -169,7 +219,11 @@ public sealed partial class MainWindow
     }
     static int IndexAt(double point, double[] sizes, int count)
     {
-        for (int i = 0; i < count - 1; i++) { if (point < sizes[i]) return i; point -= sizes[i]; }
+        for (int i = 0; i < count - 1; i++)
+        {
+            if (point < sizes[i]) return i;
+            point -= sizes[i];
+        }
         return count - 1;
     }
     async void Header_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -180,8 +234,10 @@ public sealed partial class MainWindow
         string? edgeTag = HeaderResizeTag(tag, header, local);
         int headerIndex = int.Parse(tag[4..]);
         bool selectedHeader = row
-            ? selectionBounds.Left == 0 && selectionBounds.Right == 16383 && headerIndex - 1 >= selectionBounds.Top && headerIndex - 1 <= selectionBounds.Bottom
-            : selectionBounds.Top == 0 && selectionBounds.Bottom == 1048575 && headerIndex >= selectionBounds.Left && headerIndex <= selectionBounds.Right;
+            ? selectionBounds.Left == 0 && selectionBounds.Right == 16383 && headerIndex - 1 >= selectionBounds.Top &&
+                headerIndex - 1 <= selectionBounds.Bottom
+            : selectionBounds.Top == 0 && selectionBounds.Bottom == 1048575 && headerIndex >= selectionBounds.Left &&
+                headerIndex <= selectionBounds.Right;
         if (edgeTag is null && selectedHeader && ShiftDown())
         {
             header.ReleasePointerCapture(e.Pointer);
@@ -216,7 +272,11 @@ public sealed partial class MainWindow
             {
                 await CommitInputAsync();
                 if (row) await ExecuteAsync("home.autofitRowHeight", new { rows = $"{tag[4..]}:{tag[4..]}" });
-                else { string column = ColumnName(int.Parse(tag[4..])); await ExecuteAsync("home.autofitColumnWidth", new { cols = $"{column}:{column}" }); }
+                else
+                {
+                    string column = ColumnName(int.Parse(tag[4..]));
+                    await ExecuteAsync("home.autofitColumnWidth", new { cols = $"{column}:{column}" });
+                }
                 dirty = true;
                 await RefreshAsync();
             });
@@ -253,7 +313,8 @@ public sealed partial class MainWindow
     }
     Task<JsonElement> ChangeHeaderSizeAsync(string tag, double size) => tag.StartsWith("row:")
         ? ExecuteAsync("home.rowHeight", new { rows = $"{tag[4..]}:{tag[4..]}", height = size })
-        : ExecuteAsync("home.columnWidth", new { cols = $"{ColumnName(int.Parse(tag[4..]))}:{ColumnName(int.Parse(tag[4..]))}", width = size });
+        : ExecuteAsync("home.columnWidth",
+            new { cols = $"{ColumnName(int.Parse(tag[4..]))}:{ColumnName(int.Parse(tag[4..]))}", width = size });
     Task<JsonElement> InsertHeaderAsync(string tag) => tag.StartsWith("row:")
         ? ExecuteAsync("home.insertRows", new { rows = $"{tag[4..]}:{tag[4..]}" })
         : ExecuteAsync("home.insertColumns", new { cols = $"{ColumnName(int.Parse(tag[4..]))}:{ColumnName(int.Parse(tag[4..]))}" });
@@ -261,14 +322,30 @@ public sealed partial class MainWindow
     {
         bool row = tag.StartsWith("row:");
         int index = int.Parse(tag[4..]) - (row ? firstRow : firstColumn);
-        TextBox input = new() { Text = (row ? rowHeights[index] : columnWidths[index]).ToString(System.Globalization.CultureInfo.InvariantCulture), InputScope = new InputScope { Names = { new InputScopeName { NameValue = InputScopeNameValue.Number } } } };
-        ContentDialog dialog = new() { Title = row ? "行の高さ" : "列の幅", Content = input, PrimaryButtonText = "変更", CloseButtonText = "キャンセル", XamlRoot = RootGrid.XamlRoot };
+        TextBox input = new()
+        {
+            Text =
+            (row ? rowHeights[index] : columnWidths[index]).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            InputScope = new InputScope { Names = { new InputScopeName { NameValue = InputScopeNameValue.Number } } }
+        };
+        ContentDialog dialog = new()
+        {
+            Title = row ? "行の高さ" : "列の幅",
+            Content = input,
+            PrimaryButtonText = "変更",
+            CloseButtonText = "キャンセル",
+            XamlRoot = RootGrid.XamlRoot
+        };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         await RunAsync(async () =>
         {
-            if (!double.TryParse(input.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out double size) || !double.IsFinite(size) || size <= 0)
+            if (!double.TryParse(input.Text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.CurrentCulture, out double size) || !double.IsFinite(size) || size <= 0)
                 throw new FormatException("0 より大きい数値を入力してください。");
-            await CommitInputAsync(); await ChangeHeaderSizeAsync(tag, size); dirty = true; await RefreshAsync();
+            await CommitInputAsync();
+            await ChangeHeaderSizeAsync(tag, size);
+            dirty = true;
+            await RefreshAsync();
         });
     }
     void UpdateDragPreview()
@@ -308,16 +385,21 @@ public sealed partial class MainWindow
         selectionCorner = null;
         int row = bottom - (firstRow - 1), col = right - firstColumn;
         if (row < 0 || row >= viewRows || col < 0 || col >= viewColumns) return;
-        selectionCorner = new Border {
-            Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom,
-            Margin = new Thickness(0, 0, -7, -7), Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
+        selectionCorner = new Border
+        {
+            Width = 16,
+            Height = 16,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, -7, -7),
+            Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
             Child = new Border { Width = 8, Height = 8, Background = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"] }
         };
         Border handle = selectionCorner;
         Windows.Foundation.Point start = default;
         bool filling = false;
-        var sourceBounds = selectionBounds;
-        var previewBounds = sourceBounds;
+        (int Top, int Left, int Bottom, int Right) sourceBounds = selectionBounds;
+        (int Top, int Left, int Bottom, int Right) previewBounds = sourceBounds;
         string source = currentSelection;
         (int Top, int Left, int Bottom, int Right) BoundsAt(Windows.Foundation.Point point)
         {
@@ -342,49 +424,84 @@ public sealed partial class MainWindow
             Grid.SetRow(handle, bounds.Bottom - (firstRow - 1) + 1);
             Grid.SetColumn(handle, bounds.Right - firstColumn + 1);
         }
-        handle.PointerPressed += (_, e) => {
+        handle.PointerPressed += (_, e) =>
+        {
             if (!e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed) return;
-            start = e.GetCurrentPoint(CellGrid).Position; filling = handle.CapturePointer(e.Pointer); e.Handled = true;
-        };
-        handle.PointerMoved += (_, e) => {
+            start = e.GetCurrentPoint(CellGrid).Position;
+            filling = handle.CapturePointer(e.Pointer);
+            e.Handled = true;
+        }
+;
+        handle.PointerMoved += (_, e) =>
+        {
             if (!filling) return;
             ShowPreview(BoundsAt(e.GetCurrentPoint(CellGrid).Position));
             e.Handled = true;
-        };
-        handle.PointerCaptureLost += (_, _) => {
+        }
+;
+        handle.PointerCaptureLost += (_, _) =>
+        {
             if (!filling) return;
             filling = false;
             ShowPreview(sourceBounds);
-        };
-        handle.PointerReleased += async (_, e) => {
+        }
+;
+        handle.PointerReleased += async (_, e) =>
+        {
             if (!filling) return;
-            var bounds = BoundsAt(e.GetCurrentPoint(CellGrid).Position);
-            filling = false; handle.ReleasePointerCapture(e.Pointer); e.Handled = true;
+            (int Top, int Left, int Bottom, int Right) bounds = BoundsAt(e.GetCurrentPoint(CellGrid).Position);
+            filling = false;
+            handle.ReleasePointerCapture(e.Pointer);
+            e.Handled = true;
             ShowPreview(bounds);
             if (bounds == sourceBounds) return;
             string target = $"{CellAddress(bounds.Top + 1, bounds.Left)}:{CellAddress(bounds.Bottom + 1, bounds.Right)}";
-            await RunAsync(async () => {
-                try { await CommitInputAsync(); await ExecuteAsync("edit.autoFill", new { source, target }); }
-                catch { ShowPreview(sourceBounds); throw; }
-                dirty = true; await RefreshAsync(); FocusCell(activeCell);
+            await RunAsync(async () =>
+            {
+                try
+                {
+                    await CommitInputAsync();
+                    await ExecuteAsync("edit.autoFill", new { source, target });
+                }
+                catch
+                {
+                    ShowPreview(sourceBounds);
+                    throw;
+                }
+                dirty = true;
+                await RefreshAsync();
+                FocusCell(activeCell);
             });
-        };
-        Grid.SetRow(handle, row + 1); Grid.SetColumn(handle, col + 1);
+        }
+;
+        Grid.SetRow(handle, row + 1);
+        Grid.SetColumn(handle, col + 1);
         CellGrid.Children.Add(handle);
     }
     void DrawCopyOutline()
     {
         foreach (UIElement element in CellGrid.Children.ToArray())
-            if (element is Microsoft.UI.Xaml.Shapes.Rectangle { Tag: string tag } && tag == "copy-outline") CellGrid.Children.Remove(element);
+            if (element is Microsoft.UI.Xaml.Shapes.Rectangle { Tag: string tag } &&
+                tag == "copy-outline") CellGrid.Children.Remove(element);
         if (copiedCells is not { } copied || copied.Sheet != currentSheet) return;
         int top = Math.Max(copied.Top, firstRow - 1), left = Math.Max(copied.Left, firstColumn);
         int bottom = Math.Min(copied.Bottom, firstRow + viewRows - 2), right = Math.Min(copied.Right, firstColumn + viewColumns - 1);
         if (top > bottom || left > right) return;
-        Microsoft.UI.Xaml.Shapes.Rectangle outline = new() { Tag = "copy-outline", IsHitTestVisible = false,
-            Stroke = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"], StrokeThickness = 2,
-            StrokeDashArray = new Microsoft.UI.Xaml.Media.DoubleCollection { 3, 2 }, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
-        Grid.SetRow(outline, top - (firstRow - 1) + 1); Grid.SetColumn(outline, left - firstColumn + 1);
-        Grid.SetRowSpan(outline, bottom - top + 1); Grid.SetColumnSpan(outline, right - left + 1); CellGrid.Children.Add(outline);
+        Microsoft.UI.Xaml.Shapes.Rectangle outline = new()
+        {
+            Tag = "copy-outline",
+            IsHitTestVisible = false,
+            Stroke = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"],
+            StrokeThickness = 2,
+            StrokeDashArray = new Microsoft.UI.Xaml.Media.DoubleCollection { 3, 2 },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+        Grid.SetRow(outline, top - (firstRow - 1) + 1);
+        Grid.SetColumn(outline, left - firstColumn + 1);
+        Grid.SetRowSpan(outline, bottom - top + 1);
+        Grid.SetColumnSpan(outline, right - left + 1);
+        CellGrid.Children.Add(outline);
     }
     void UpdateHeaderSelectionVisuals(int top, int left, int bottom, int right)
     {
@@ -403,7 +520,9 @@ public sealed partial class MainWindow
     {
         if (selectedShape is not null || selectedImage is not null)
         {
-            selectedShape = null; selectedImage = null; ShapeTab.Visibility = Visibility.Collapsed;
+            selectedShape = null;
+            selectedImage = null;
+            ShapeTab.Visibility = Visibility.Collapsed;
             if (RibbonSelector.SelectedItem == ShapeTab) RibbonSelector.SelectedItem = RibbonSelector.Items[1];
             viewportDirty = true;
         }
@@ -411,7 +530,9 @@ public sealed partial class MainWindow
         await CommitInputAsync();
         (int row1, int col1) = ParseCell(start);
         (int row2, int col2) = ParseCell(end);
-        string range = $"{CellAddress(Math.Min(row1, row2), Math.Min(col1, col2))}:{CellAddress(Math.Max(row1, row2), Math.Max(col1, col2))}";
+        string firstAddress = CellAddress(Math.Min(row1, row2), Math.Min(col1, col2));
+        string lastAddress = CellAddress(Math.Max(row1, row2), Math.Max(col1, col2));
+        string range = $"{firstAddress}:{lastAddress}";
         await ExecuteAsync("selection.set", new { range, active = start });
         selectionAnchor = start;
         selectionLead = end;
@@ -422,7 +543,11 @@ public sealed partial class MainWindow
     {
         string text = address.Trim().Replace("$", "").ToUpperInvariant();
         int i = 0, col = 0;
-        while (i < text.Length && text[i] is >= 'A' and <= 'Z') { col = checked(col * 26 + text[i] - 'A' + 1); i++; }
+        while (i < text.Length && text[i] is >= 'A' and <= 'Z')
+        {
+            col = checked(col * 26 + text[i] - 'A' + 1);
+            i++;
+        }
         if (i == 0 || i == text.Length || !int.TryParse(text[i..], out int row) || row is < 1 or > 1_048_576 || col is < 1 or > 16_384)
             throw new FormatException("セル番地を入力してください。例: A1");
         return (row, col - 1);
@@ -450,14 +575,20 @@ public sealed partial class MainWindow
     async void Cell_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (sender is not Button { Tag: string address }) return;
-        if (scrollPreview is not null) { e.Handled = true; return; }
+        if (scrollPreview is not null)
+        {
+            e.Handled = true;
+            return;
+        }
         (int row, int col) = ParseCell(address);
         bool shift = (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
-        bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+        bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(
+            VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
         if (control && e.Key is VirtualKey.C or VirtualKey.X or VirtualKey.V)
         {
             e.Handled = true;
-            string command = e.Key == VirtualKey.C ? "edit.copy" : e.Key == VirtualKey.X ? "edit.cut" : shift ? "edit.paste.values" : "edit.paste";
+            string command = e.Key == VirtualKey.C ? "edit.copy" : e.Key == VirtualKey
+                .X ? "edit.cut" : shift ? "edit.paste.values" : "edit.paste";
             await RunAsync(async () => await ClipboardCommandAsync(command));
             return;
         }
@@ -475,20 +606,41 @@ public sealed partial class MainWindow
         }
         if (control && e.Key == VirtualKey.E)
         {
-            e.Handled = true; await FlashFillAsync(); return;
+            e.Handled = true;
+            await FlashFillAsync();
+            return;
         }
         switch (e.Key)
         {
-            case VirtualKey.Left: col = control ? 0 : col - 1; break;
-            case VirtualKey.Right: col = control ? 16_383 : col + 1; break;
-            case VirtualKey.Up: row = control ? 1 : row - 1; break;
-            case VirtualKey.Down: row = control ? 1_048_576 : row + 1; break;
-            case VirtualKey.Enter: row++; break;
+            case VirtualKey.Left:
+                col = control ? 0 : col - 1;
+                break;
+            case VirtualKey.Right:
+                col = control ? 16_383 : col + 1;
+                break;
+            case VirtualKey.Up:
+                row = control ? 1 : row - 1;
+                break;
+            case VirtualKey.Down:
+                row = control ? 1_048_576 : row + 1;
+                break;
+            case VirtualKey.Enter:
+                row++;
+                break;
             case VirtualKey.Delete:
                 e.Handled = true;
-                await RunAsync(async () => { await ExecuteAsync("edit.clearContents", new { }); dirty = true; await RefreshAsync(refreshSheets: false, updateCellValues: true); FocusCell(address); });
+                await RunAsync(async () =>
+                {
+                    await ExecuteAsync("edit.clearContents", new { });
+                    dirty = true;
+                    await RefreshAsync(refreshSheets: false, updateCellValues: true);
+                    FocusCell(address);
+                });
                 return;
-            case VirtualKey.F2: StartCellEdit(activeCell, false); e.Handled = true; return;
+            case VirtualKey.F2:
+                StartCellEdit(activeCell, false);
+                e.Handled = true;
+                return;
             default:
                 int key = (int)e.Key;
                 if (!control && (e.Key == VirtualKey.Space || key is >= 48 and <= 90 or >= 96 and <= 111 or >= 186 and <= 222 or 229))
@@ -517,19 +669,23 @@ public sealed partial class MainWindow
         await CommitInputAsync();
         if (command is "edit.copy" or "edit.cut")
         {
-            objectClipboard = null; objectClipboardToken = null;
+            objectClipboard = null;
+            objectClipboardToken = null;
             JsonElement result = await ExecuteAsync(command, new { html = true });
             if (command == "edit.cut") dirty = true;
             string text = result.GetProperty("text").GetString() ?? "";
             DataPackage package = new();
             package.SetText(text);
-            if (result.TryGetProperty("data", out JsonElement internalData) && internalData.ValueKind == JsonValueKind.String && internalData.GetString() is string payload)
+            if (result.TryGetProperty("data",
+                out JsonElement internalData) && internalData.ValueKind == JsonValueKind.String &&
+                    internalData.GetString() is string payload)
                 package.SetData("Chlorella.Cells.v1", payload);
             if (result.TryGetProperty("html", out JsonElement html) && html.GetString() is string markup)
                 package.SetHtmlFormat(HtmlFormatHelper.CreateHtmlFormat(markup));
             Clipboard.SetContent(package);
             if (command == "edit.cut") await RefreshAsync();
-            copiedCells = (selectionBounds.Top, selectionBounds.Left, selectionBounds.Bottom, selectionBounds.Right, currentSheet); DrawCopyOutline();
+            copiedCells = (selectionBounds.Top, selectionBounds.Left, selectionBounds.Bottom, selectionBounds.Right, currentSheet);
+            DrawCopyOutline();
             cutClipboardText = command == "edit.cut" ? text : null;
             cutPasted = false;
             SetStatus(command == "edit.cut" ? "切り取りました。" : "コピーしました。");
@@ -547,18 +703,33 @@ public sealed partial class MainWindow
                 if (copied.Cut)
                 {
                     await ExecuteAsync("object.move", new { kind = copied.Kind, id = copied.Id, at = activeCell, dx = 0, dy = 0 });
-                    objectClipboard = null; objectClipboardToken = null;
+                    objectClipboard = null;
+                    objectClipboardToken = null;
                 }
                 else await ExecuteAsync("object.duplicate", new { kind = copied.Kind, id = copied.Id, at = activeCell });
-                dirty = true; await RefreshAsync(); FocusCell(selectionLead); SetStatus("貼り付けました。"); return;
+                dirty = true;
+                await RefreshAsync();
+                FocusCell(selectionLead);
+                SetStatus("貼り付けました。");
+                return;
             }
             if (!content.Contains(StandardDataFormats.Text)) throw new InvalidOperationException("クリップボードに貼り付け可能なテキストがありません。");
             string text = await content.GetTextAsync();
             if (cutPasted && text == cutClipboardText) throw new InvalidOperationException("切り取ったセルは既に貼り付けられています。");
-            if (text != cutClipboardText) { cutClipboardText = null; cutPasted = false; }
+            if (text != cutClipboardText)
+            {
+                cutClipboardText = null;
+                cutPasted = false;
+            }
             string? html = content.Contains(StandardDataFormats.Html) ? await content.GetHtmlFormatAsync() : null;
             string? data = content.Contains("Chlorella.Cells.v1") ? (await content.GetDataAsync("Chlorella.Cells.v1"))?.ToString() : null;
-            string mode = command switch { "edit.paste.values" => "values", "edit.paste.formulas" => "formulas", "edit.paste.formats" => "formats", _ => "all" };
+            string mode = command switch
+            {
+                "edit.paste.values" => "values",
+                "edit.paste.formulas" => "formulas",
+                "edit.paste.formats" => "formats",
+                _ => "all"
+            };
             await ExecuteAsync("edit.paste", new { text, html, data, mode });
             copiedCells = null;
             if (cutClipboardText is not null && text == cutClipboardText) cutPasted = true;
@@ -578,15 +749,25 @@ public sealed partial class MainWindow
         int visibleColumns = VisibleCount(columnWidths, viewColumns, Math.Max(1, GridScroll.ActualWidth / GridScroll.ZoomFactor - 48));
         if (col >= firstColumn + visibleColumns) firstColumn = Math.Min(16_383, col - visibleColumns + 1);
         if (firstColumn != previousColumn || (col == firstColumn && columnScrollFraction > 0))
-        { columnScrollFraction = 0; UpdateHorizontalOffset(); }
+        {
+            columnScrollFraction = 0;
+            UpdateHorizontalOffset();
+        }
     }
     static int VisibleCount(double[] sizes, int count, double space)
     {
         int visible = 0;
-        while (visible < count && (sizes[visible] <= 0 || space >= sizes[visible])) { space -= Math.Max(0, sizes[visible]); visible++; }
+        while (visible < count && (sizes[visible] <= 0 || space >= sizes[visible]))
+        {
+            space -= Math.Max(0, sizes[visible]);
+            visible++;
+        }
         return Math.Max(1, visible);
     }
-    void ScheduleScroll() { if (!scrollTimer.IsEnabled) scrollTimer.Start(); }
+    void ScheduleScroll()
+    {
+        if (!scrollTimer.IsEnabled) scrollTimer.Start();
+    }
     void RowScroll_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (updatingScroll) return;
@@ -634,9 +815,17 @@ public sealed partial class MainWindow
     async void ScrollTimer_Tick(object? sender, object e)
     {
         scrollTimer.Stop();
-        if (scrollBusy) { ScheduleScroll(); return; }
+        if (scrollBusy)
+        {
+            ScheduleScroll();
+            return;
+        }
         scrollBusy = true;
-        try { await CommitInputAsync(); await RefreshAsync(); }
+        try
+        {
+            await CommitInputAsync();
+            await RefreshAsync();
+        }
         catch (Exception ex)
         {
             if (renderedRow >= 1 && renderedColumn >= 0)
@@ -646,13 +835,23 @@ public sealed partial class MainWindow
                 columnScrollFraction = renderedColumnScrollFraction;
                 UpdateHorizontalOffset();
                 updatingScroll = true;
-                try { RowScroll.Value = firstRow; ColumnScroll.Value = firstColumn + columnScrollFraction; }
-                finally { updatingScroll = false; }
+                try
+                {
+                    RowScroll.Value = firstRow;
+                    ColumnScroll.Value = firstColumn + columnScrollFraction;
+                }
+                finally
+                {
+                    updatingScroll = false;
+                }
             }
             RemoveScrollPreview();
             SetStatus(ex.Message);
         }
-        finally { scrollBusy = false; }
+        finally
+        {
+            scrollBusy = false;
+        }
     }
     // Keep a text input focused before typing starts so the IME receives the first key.
     void ArmCellInput(string address, Button navigationCell, Button inputCell)
@@ -683,19 +882,23 @@ public sealed partial class MainWindow
         editor.PreviewKeyDown += (_, e) =>
         {
             if (!cellInputWaiting) return;
-            bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
+            bool control = (InputKeyboardSource.GetKeyStateForCurrentThread(
+                VirtualKey.Control) & Windows.UI.Core.CoreVirtualKeyStates.Down) != 0;
             if ((e.Key == VirtualKey.Space && inputCell.Content is FontIcon) ||
-                e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or VirtualKey.Enter or VirtualKey.Delete or VirtualKey.F2 ||
+                e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down or VirtualKey
+                    .Enter or VirtualKey.Delete or VirtualKey.F2 ||
                 (control && e.Key is VirtualKey.A or VirtualKey.C or VirtualKey.X or VirtualKey.V or VirtualKey.E))
                 Cell_KeyDown(navigationCell, e);
-        };
+        }
+;
         bool focusPending = false;
         editor.Loaded += (_, _) =>
         {
             if (focusPending && cellEditor == editor && cellInputWaiting &&
                 ReferenceEquals(FocusManager.GetFocusedElement(CellGrid.XamlRoot), inputCell))
                 editor.Focus(FocusState.Programmatic);
-        };
+        }
+;
         ShowCellEditor(editor, address);
         if (!editor.Focus(FocusState.Programmatic))
         {
@@ -749,11 +952,21 @@ public sealed partial class MainWindow
         ShowCellEditor(editor, address);
         editor.Focus(FocusState.Programmatic);
         editor.SelectionStart = editor.Text.Length;
-        if (replace) { FormulaInput.Text = ""; inputPending = true; dirty = true; }
+        if (replace)
+        {
+            FormulaInput.Text = "";
+            inputPending = true;
+            dirty = true;
+        }
     }
     void CellEditor_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (sender is TextBox editor && editor == cellEditor) { FormulaInput.Text = editor.Text; inputPending = true; dirty = true; }
+        if (sender is TextBox editor && editor == cellEditor)
+        {
+            FormulaInput.Text = editor.Text;
+            inputPending = true;
+            dirty = true;
+        }
     }
     async void CellEditor_KeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -768,13 +981,25 @@ public sealed partial class MainWindow
                 editor.SelectionStart = start + 1;
                 return;
             }
-            await RunAsync(async () => { await CommitInputAsync(); (int row, int col) = ParseCell(activeCell); row = await MoveVisibleRowAsync(row, 1, 1); EnsureVisible(row, col); string next = CellAddress(row, col); await SelectRangeAsync(next, next); });
+            await RunAsync(async () =>
+            {
+                await CommitInputAsync();
+                (int row, int col) = ParseCell(activeCell);
+                row = await MoveVisibleRowAsync(row, 1, 1);
+                EnsureVisible(row, col);
+                string next = CellAddress(row, col);
+                await SelectRangeAsync(next, next);
+            });
         }
         else if (e.Key == VirtualKey.Escape)
         {
             e.Handled = true;
             inputPending = false;
-            await RunAsync(async () => { await RefreshAsync(); FocusCell(activeCell); });
+            await RunAsync(async () =>
+            {
+                await RefreshAsync();
+                FocusCell(activeCell);
+            });
         }
     }
     async void Header_Click(object sender, RoutedEventArgs e)

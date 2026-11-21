@@ -23,7 +23,9 @@ sealed partial class WorksheetEngine
         if (swap && source.Intersects(target)) throw new InvalidOperationException("入れ替える範囲が重なっています。");
         EnsureVisibleRows(Current.Selection);
         EnsureVisibleRows($"{Address(target.Top, target.Left)}:{Address(target.Bottom, target.Right)}");
-        if (Current.Merges.Any(m => m.Intersects(source) || m.Intersects(target)) || Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom, t.Right).Intersects(source) || new CellRange(t.Top, t.Left, t.Bottom, t.Right).Intersects(target)))
+        if (Current.Merges.Any(m => m.Intersects(source) || m.Intersects(target)) ||
+            Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom,
+                t.Right).Intersects(source) || new CellRange(t.Top, t.Left, t.Bottom, t.Right).Intersects(target)))
             throw new InvalidOperationException("結合セルまたはテーブルを含む範囲は移動できません。");
         if (Current.Cells.Values.Any(value => value.StartsWith('=')))
             throw new InvalidOperationException("数式を含むシートでは範囲を移動できません。");
@@ -54,7 +56,8 @@ sealed partial class WorksheetEngine
             ? new(Math.Min(start, destination), left, Math.Max(end, destination + count - 1), right)
             : new(top, Math.Min(start, destination), bottom, Math.Max(end, destination + count - 1));
         EnsureVisibleRows($"{Address(affected.Top, affected.Left)}:{Address(affected.Bottom, affected.Right)}");
-        if (Current.Merges.Any(m => m.Intersects(affected)) || Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom, t.Right).Intersects(affected)))
+        if (Current.Merges.Any(m => m.Intersects(affected)) || Current.Tables.Any(t => new CellRange(t.Top, t.Left, t.Bottom,
+            t.Right).Intersects(affected)))
             throw new InvalidOperationException("結合セルまたはテーブルを含む範囲は移動できません。");
         if (Current.Cells.Values.Any(value => value.StartsWith('='))) throw new InvalidOperationException("数式を含むシートでは範囲を移動できません。");
         if (Current.Objects.Any(item => affected.Contains(item.Row, item.Col))) throw new InvalidOperationException("図形や画像を含む範囲は移動できません。");
@@ -66,8 +69,10 @@ sealed partial class WorksheetEngine
             : vertical ? (Map(cell.Row), cell.Col) : (cell.Row, Map(cell.Col));
         Current.Cells = Current.Cells.ToDictionary(pair => MapCell(pair.Key), pair => pair.Value);
         Current.Fonts = Current.Fonts.ToDictionary(pair => MapCell(pair.Key), pair => pair.Value);
-        if (vertical && left == 0 && right == 16383) Current.RowHeights = Current.RowHeights.ToDictionary(pair => Map(pair.Key), pair => pair.Value);
-        if (!vertical && top == 0 && bottom == 1048575) Current.ColumnWidths = Current.ColumnWidths.ToDictionary(pair => Map(pair.Key), pair => pair.Value);
+        if (vertical && left == 0 &&
+            right == 16383) Current.RowHeights = Current.RowHeights.ToDictionary(pair => Map(pair.Key), pair => pair.Value);
+        if (!vertical && top == 0 &&
+            bottom == 1048575) Current.ColumnWidths = Current.ColumnWidths.ToDictionary(pair => Map(pair.Key), pair => pair.Value);
         int dr = vertical ? offset : 0, dc = vertical ? 0 : offset;
         Current.Selection = $"{Address(top + dr, left + dc)}:{Address(bottom + dr, right + dc)}";
         (int activeRow, int activeCol) = ParseCell(Current.Active);
@@ -78,7 +83,8 @@ sealed partial class WorksheetEngine
     {
         KeyValuePair<(int Row, int Col), T>[] original = items.Where(p => source.Contains(p.Key.Row, p.Key.Col)).ToArray();
         KeyValuePair<(int Row, int Col), T>[] replaced = swap ? items.Where(p => target.Contains(p.Key.Row, p.Key.Col)).ToArray() : [];
-        foreach ((int row, int col) in items.Keys.Where(p => source.Contains(p.Row, p.Col) || target.Contains(p.Row, p.Col)).ToArray()) items.Remove((row, col));
+        foreach ((int row, int col) in items.Keys.Where(p => source.Contains(p.Row, p.Col) || target.Contains(p.Row,
+            p.Col)).ToArray()) items.Remove((row, col));
         foreach (KeyValuePair<(int Row, int Col), T> item in original) items[(item.Key.Row + dr, item.Key.Col + dc)] = item.Value;
         foreach (KeyValuePair<(int Row, int Col), T> item in replaced) items[(item.Key.Row - dr, item.Key.Col - dc)] = item.Value;
     }
@@ -87,7 +93,8 @@ sealed partial class WorksheetEngine
     {
         KeyValuePair<int, double>[] original = items.Where(p => p.Key >= start && p.Key <= end).ToArray();
         KeyValuePair<int, double>[] replaced = swap ? items.Where(p => p.Key >= start + offset && p.Key <= end + offset).ToArray() : [];
-        foreach (int key in items.Keys.Where(k => (k >= start && k <= end) || (k >= start + offset && k <= end + offset)).ToArray()) items.Remove(key);
+        foreach (int key in items.Keys.Where(k => (k >= start && k <= end) || (k >= start + offset &&
+            k <= end + offset)).ToArray()) items.Remove(key);
         foreach (KeyValuePair<int, double> item in original) items[item.Key + offset] = item.Value;
         foreach (KeyValuePair<int, double> item in replaced) items[item.Key - offset] = item.Value;
     }

@@ -12,11 +12,16 @@ sealed partial class WorksheetEngine
         int first = row ? top : left, last = row ? bottom : right;
         if (last - first > 10000) throw new InvalidOperationException("一度に変更できる行または列が多すぎます。");
         double size = automatic ? 0 : args.GetProperty(row ? "height" : "width").GetDouble();
-        if (!automatic && (!double.IsFinite(size) || size <= 0 || size > 10000)) throw new InvalidOperationException("サイズは 0 より大きく 10000 以下にしてください。");
+        if (!automatic && (!double.IsFinite(size) || size <= 0 ||
+            size > 10000)) throw new InvalidOperationException("サイズは 0 より大きく 10000 以下にしてください。");
         Dictionary<int, double> dimensions = row ? Current.RowHeights : Current.ColumnWidths;
         for (int index = first; index <= last; index++)
         {
-            if (!automatic) { dimensions[index] = size; continue; }
+            if (!automatic)
+            {
+                dimensions[index] = size;
+                continue;
+            }
             if (row)
             {
                 double height = Current.Fonts.Where(p => p.Key.Row == index)

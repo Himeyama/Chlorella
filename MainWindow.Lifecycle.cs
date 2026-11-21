@@ -11,8 +11,14 @@ public sealed partial class MainWindow
 {
     async Task RunAsync(Func<Task> action)
     {
-        try { await action(); }
-        catch (Exception ex) { SetStatus(ex.Message); }
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            SetStatus(ex.Message);
+        }
     }
     async Task<bool> ConfirmDiscardAsync()
     {
@@ -33,10 +39,16 @@ public sealed partial class MainWindow
         args.Cancel = true;
         await RunAsync(async () =>
         {
-            if (await ConfirmDiscardAsync()) { confirmedClose = true; Close(); }
+            if (await ConfirmDiscardAsync())
+            {
+                confirmedClose = true;
+                Close();
+            }
         });
     }
-    void Window_Closed(object sender, WindowEventArgs args) { }
+    void Window_Closed(object sender, WindowEventArgs args)
+    {
+    }
     void SetInitialWindowSize()
     {
         uint dpi = GetDpiForWindow(WindowNative.GetWindowHandle(this));
@@ -44,7 +56,11 @@ public sealed partial class MainWindow
         int width = (int)Math.Round(960 * scale);
         int height = (int)Math.Round(640 * scale);
         DisplayArea? display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest);
-        if (display is null) { AppWindow.Resize(new SizeInt32(width, height)); return; }
+        if (display is null)
+        {
+            AppWindow.Resize(new SizeInt32(width, height));
+            return;
+        }
         RectInt32 work = display.WorkArea;
         width = Math.Min(width, work.Width);
         height = Math.Min(height, work.Height);

@@ -18,8 +18,12 @@ public sealed partial class MainWindow
 
     void BeginRangeMove(PointerRoutedEventArgs e, int row, int column, bool rows, bool columns)
     {
-        moveStartRow = row; moveStartColumn = column; moveRowOffset = 0; moveColumnOffset = 0;
-        moveRows = rows; moveColumns = columns;
+        moveStartRow = row;
+        moveStartColumn = column;
+        moveRowOffset = 0;
+        moveColumnOffset = 0;
+        moveRows = rows;
+        moveColumns = columns;
         movingRange = CellGrid.CapturePointer(e.Pointer);
         if (movingRange) ShowMoveStatus();
         e.Handled = movingRange;
@@ -54,7 +58,11 @@ public sealed partial class MainWindow
     void UpdateMovePreview()
     {
         ClearMovePreview();
-        if (ShiftDown()) { UpdateInsertionPreview(); return; }
+        if (ShiftDown())
+        {
+            UpdateInsertionPreview();
+            return;
+        }
         if (moveRowOffset == 0 && moveColumnOffset == 0) return;
         int top = selectionBounds.Top + moveRowOffset, bottom = selectionBounds.Bottom + moveRowOffset;
         int left = selectionBounds.Left + moveColumnOffset, right = selectionBounds.Right + moveColumnOffset;
@@ -68,7 +76,8 @@ public sealed partial class MainWindow
         List<Border> preview = [];
         foreach (UIElement element in CellGrid.Children)
         {
-            if (element is not Button { Tag: string tag } button || element is not (SheetCellButton or SheetHeaderButton) || tag == "all") continue;
+            if (element is not Button { Tag: string tag } button || element is not (SheetCellButton or SheetHeaderButton) ||
+                tag == "all") continue;
             Thickness edge;
             if (tag.StartsWith("row:"))
             {
@@ -90,13 +99,24 @@ public sealed partial class MainWindow
                     showBottom && row + Grid.GetRowSpan(button) - 1 == bottom ? 3 : 0);
             }
             if (edge == new Thickness(0)) continue;
-            Border overlay = new() { BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"], BorderThickness = edge, IsHitTestVisible = false };
-            Grid.SetRow(overlay, Grid.GetRow(button)); Grid.SetColumn(overlay, Grid.GetColumn(button));
-            Grid.SetRowSpan(overlay, Grid.GetRowSpan(button)); Grid.SetColumnSpan(overlay, Grid.GetColumnSpan(button));
+            Border overlay = new()
+            {
+                BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"],
+                BorderThickness = edge,
+                IsHitTestVisible = false
+            };
+            Grid.SetRow(overlay, Grid.GetRow(button));
+            Grid.SetColumn(overlay, Grid.GetColumn(button));
+            Grid.SetRowSpan(overlay, Grid.GetRowSpan(button));
+            Grid.SetColumnSpan(overlay, Grid.GetColumnSpan(button));
             Canvas.SetZIndex(overlay, 6);
             preview.Add(overlay);
         }
-        foreach (Border overlay in preview) { CellGrid.Children.Add(overlay); movePreview.Add(overlay); }
+        foreach (Border overlay in preview)
+        {
+            CellGrid.Children.Add(overlay);
+            movePreview.Add(overlay);
+        }
     }
 
     void UpdateInsertionPreview()
@@ -111,10 +131,12 @@ public sealed partial class MainWindow
         List<Border> preview = [];
         foreach (UIElement element in CellGrid.Children)
         {
-            if (element is not Button { Tag: string tag } button || element is not (SheetCellButton or SheetHeaderButton) || tag == "all") continue;
+            if (element is not Button { Tag: string tag } button || element is not (SheetCellButton or SheetHeaderButton) ||
+                tag == "all") continue;
             bool target = false;
             if (tag.StartsWith("row:")) target = moveRows && moveVertical && int.TryParse(tag[4..], out int row) && row - 1 == lineCell;
-            else if (tag.StartsWith("col:")) target = moveColumns && !moveVertical && int.TryParse(tag[4..], out int column) && column == lineCell;
+            else if (tag.StartsWith("col:")) target = moveColumns && !moveVertical && int.TryParse(tag[4..],
+                out int column) && column == lineCell;
             else
             {
                 (int row, int column) = ParseCell(tag);
@@ -125,13 +147,24 @@ public sealed partial class MainWindow
             if (!target) continue;
             Thickness edge = moveVertical ? new Thickness(0, trailing ? 0 : 3, 0, trailing ? 3 : 0)
                 : new Thickness(trailing ? 0 : 3, 0, trailing ? 3 : 0, 0);
-            Border overlay = new() { BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"], BorderThickness = edge, IsHitTestVisible = false };
-            Grid.SetRow(overlay, Grid.GetRow(button)); Grid.SetColumn(overlay, Grid.GetColumn(button));
-            Grid.SetRowSpan(overlay, Grid.GetRowSpan(button)); Grid.SetColumnSpan(overlay, Grid.GetColumnSpan(button));
+            Border overlay = new()
+            {
+                BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"],
+                BorderThickness = edge,
+                IsHitTestVisible = false
+            };
+            Grid.SetRow(overlay, Grid.GetRow(button));
+            Grid.SetColumn(overlay, Grid.GetColumn(button));
+            Grid.SetRowSpan(overlay, Grid.GetRowSpan(button));
+            Grid.SetColumnSpan(overlay, Grid.GetColumnSpan(button));
             Canvas.SetZIndex(overlay, 6);
             preview.Add(overlay);
         }
-        foreach (Border overlay in preview) { CellGrid.Children.Add(overlay); movePreview.Add(overlay); }
+        foreach (Border overlay in preview)
+        {
+            CellGrid.Children.Add(overlay);
+            movePreview.Add(overlay);
+        }
     }
 
     void ClearMovePreview()
@@ -150,11 +183,19 @@ public sealed partial class MainWindow
         e.Handled = true;
         bool swap = ShiftDown();
         if (!swap && moveRowOffset == 0 && moveColumnOffset == 0) return;
-        if (swap && moveInsertion >= (moveVertical ? selectionBounds.Top : selectionBounds.Left) && moveInsertion <= (moveVertical ? selectionBounds.Bottom : selectionBounds.Right) + 1) return;
+        if (swap && moveInsertion >= (moveVertical ? selectionBounds.Top : selectionBounds.Left) &&
+            moveInsertion <= (moveVertical ? selectionBounds.Bottom : selectionBounds.Right) + 1) return;
         await RunAsync(async () =>
         {
             await CommitInputAsync();
-            await ExecuteAsync("edit.moveRange", new { rowOffset = moveRowOffset, columnOffset = moveColumnOffset, swap, vertical = moveVertical, insertIndex = moveInsertion });
+            await ExecuteAsync("edit.moveRange", new
+            {
+                rowOffset = moveRowOffset,
+                columnOffset = moveColumnOffset,
+                swap,
+                vertical = moveVertical,
+                insertIndex = moveInsertion
+            });
             dirty = true;
             await RefreshAsync();
             selectionAnchor = activeCell;

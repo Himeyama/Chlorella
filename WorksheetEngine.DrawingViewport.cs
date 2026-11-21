@@ -7,7 +7,8 @@ sealed partial class WorksheetEngine
     Dictionary<int, double> DrawingRowHeights()
     {
         if (drawingHeightCache.TryGetValue(Current, out Dictionary<int, double>? cached)) return cached;
-        Dictionary<int, double> heights = Current.Fonts.GroupBy(pair => pair.Key.Row).ToDictionary(group => group.Key, group => Math.Max(24, group.Max(pair => EstimateRowHeight(Current, pair.Key, pair.Value))));
+        Dictionary<int, double> heights = Current.Fonts.GroupBy(pair => pair.Key.Row).ToDictionary(group => group.Key,
+            group => Math.Max(24, group.Max(pair => EstimateRowHeight(Current, pair.Key, pair.Value))));
         foreach (KeyValuePair<int, double> entry in Current.RowHeights) heights[entry.Key] = Math.Max(18, entry.Value);
         drawingHeightCache[Current] = heights;
         return heights;
@@ -29,7 +30,12 @@ sealed partial class WorksheetEngine
         int LowerBound(int index)
         {
             int lo = 0, hi = keys.Length;
-            while (lo < hi) { int mid = lo + (hi - lo) / 2; if (keys[mid] < index) lo = mid + 1; else hi = mid; }
+            while (lo < hi)
+            {
+                int mid = lo + (hi - lo) / 2;
+                if (keys[mid] < index) lo = mid + 1;
+                else hi = mid;
+            }
             return lo;
         }
         public double At(int index) => index * fallback + cumulative[LowerBound(index)];

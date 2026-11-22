@@ -1,0 +1,50 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - uses: actions/checkout@v4
+        with:
+          repository: Himeyama/hsis
+          ref: cc5d03947606deee1a7c445e3fe24f8902b0d679
+          path: hsis
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+      - name: Build installer
+        shell: pwsh
+        working-directory: app
+        env:
+          HSIS_7ZIP_PATH: C:\Program Files\7-Zip\7z.exe
+        run: ./scripts/build-release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Chlorella-win-x64
+          path: app/artifacts/distribution/*
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        working-directory: app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME artifacts/distribution/* --title $env:GITHUB_REF_NAME --generate-notes --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

@@ -364,8 +364,122 @@ try
 finally { File.Delete(externalPath); }
 WorksheetEngine drawingEngine = new();
 async Task<JsonElement> DrawingRun(string command, object args) => await drawingEngine.SendAsync("engine.execute", new { command, @params = args });
+WorksheetEngine lineEngine = new();
+async Task<JsonElement> LineRun(string command, object args) => await lineEngine.SendAsync("engine.execute", new { command, @params = args });
+Check(DrawingGeometry.SnapRotation(22, true) == 15 && DrawingGeometry.SnapRotation(23, true) == 30 &&
+    DrawingGeometry.SnapRotation(-8, true) == -15 && DrawingGeometry.SnapRotation(23, false) == 23 &&
+    DrawingGeometry.StepRotation(17, 1, true) == 30 && DrawingGeometry.StepRotation(17, -1, true) == 15 &&
+    DrawingGeometry.StepRotation(30, -1, true) == 15 && DrawingGeometry.StepRotation(17, 1, false) == 18,
+    "Shift rotation snaps to 15-degree steps in both directions");
+(double rotatedX, double rotatedY) = DrawingGeometry.RotatePoint(10, 20, 100, 40, 0, 0, 90);
+Check(Math.Abs(rotatedX - 80) < 1e-9 && Math.Abs(rotatedY + 10) < 1e-9, "Rotated line endpoint stays centered on its shape");
+(double lineLength, double lineAngle) = DrawingGeometry.LineDirection(3, 4, true);
+Check(lineLength == 5 && Math.Abs(lineAngle + 53.13010235415598) < 1e-9,
+    "Line hit target follows the flipped line instead of its bounding box");
+Check(DrawingGeometry.MovedEndpointIndex(101, 100, 0) == 1 && DrawingGeometry.MovedEndpointIndex(99, 100, 1) == 0 &&
+    DrawingGeometry.MovedEndpointIndex(100, 100, 1) == 1, "Keyboard focus follows an endpoint across the fixed end");
+foreach ((double width, double height) in new[] { (160d, 100d), (80d, .01d), (.01d, 90d) })
+foreach (bool flip in new[] { false, true })
+foreach (double angle in new[] { 0d, 37d, 90d, 180d, 270d })
+{
+    (double length, double direction) = DrawingGeometry.LineDirection(width, height, flip);
+    double radians = (angle + direction) * Math.PI / 180;
+    double centerX = 10 + width / 2, centerY = 20 + height / 2;
+    (double startX, double startY) = DrawingGeometry.RotatePoint(10, 20, width, height, 0, flip ? height : 0, angle);
+    (double endX, double endY) = DrawingGeometry.RotatePoint(10, 20, width, height, width, flip ? 0 : height, angle);
+    Check(Math.Abs(startX - (centerX - length / 2 * Math.Cos(radians))) < 1e-8 &&
+        Math.Abs(startY - (centerY - length / 2 * Math.Sin(radians))) < 1e-8 &&
+        Math.Abs(endX - (centerX + length / 2 * Math.Cos(radians))) < 1e-8 &&
+        Math.Abs(endY - (centerY + length / 2 * Math.Sin(radians))) < 1e-8,
+        "Rotated line hit target and endpoint handles coincide");
+}
+foreach ((double x1, double y1, double x2, double y2, bool flip) in new[]
+    { (10d, 20d, 90d, 80d, false), (90d, 80d, 10d, 20d, false),
+      (10d, 80d, 90d, 20d, true), (90d, 20d, 10d, 80d, true) })
+{
+    (double left, double top, double width, double height, bool flipped) = DrawingGeometry.LineBounds(x1, y1, x2, y2);
+    Check(left == 10 && top == 20 && width == 80 && height == 60 && flipped == flip,
+        "Moving either endpoint across both axes preserves line geometry");
+}
+await LineRun("insert.shape", new { kind = "line", at = "B2" });
+await LineRun("object.move", new { kind = "shape", id = 1, dx = 3, dy = 4, width = 80, height = .01, flipV = true, rotation = 0 });
+JsonElement lineView = (await lineEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("shapes")[0];
+Check(lineView.GetProperty("flipV").GetBoolean() && lineView.GetProperty("anchor").GetProperty("height").GetDouble() == .01,
+    "Line endpoints allow near-horizontal lines and reverse slope");
+await LineRun("edit.undo", new { });
+Check(!(await lineEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("shapes")[0].GetProperty("flipV").GetBoolean(),
+    "Line endpoint changes support undo");
+await LineRun("edit.redo", new { });
+string linePath = Path.Combine(Path.GetTempPath(), $"chlorella-line-{Guid.NewGuid():N}.xlsx");
+try
+{
+    await LineRun("file.saveAs", new { path = linePath });
+    await LineRun("file.open", new { path = linePath });
+    Check((await lineEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("shapes")[0].GetProperty("flipV").GetBoolean(),
+        "Near-horizontal line survives saved metadata");
+    using (FileStream file = File.Open(linePath, FileMode.Open, FileAccess.ReadWrite))
+    using (ZipArchive zip = new(file, ZipArchiveMode.Update))
+    {
+        foreach (ZipArchiveEntry entry in zip.Entries.Where(entry => entry.FullName.StartsWith("chlorella/")).ToArray()) entry.Delete();
+        ZipArchiveEntry original = zip.GetEntry("xl/drawings/drawing1.xml") ?? throw new Exception("Missing line drawing");
+        System.Xml.Linq.XDocument xml;
+        using (Stream input = original.Open()) xml = System.Xml.Linq.XDocument.Load(input);
+        System.Xml.Linq.XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+        System.Xml.Linq.XNamespace xdr = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing";
+        System.Xml.Linq.XElement transform = xml.Descendants(a + "xfrm").Single();
+        transform.SetAttributeValue("flipV", null);
+        transform.SetAttributeValue("flipH", "1");
+        transform.Element(a + "ext")?.SetAttributeValue("cy", "0");
+        xml.Descendants(xdr + "oneCellAnchor").Single().Element(xdr + "ext")?.SetAttributeValue("cy", "0");
+        original.Delete();
+        using Stream output = zip.CreateEntry("xl/drawings/drawing1.xml").Open();
+        xml.Save(output);
+    }
+    WorksheetEngine nativeLineEngine = new();
+    await nativeLineEngine.SendAsync("engine.execute", new { command = "file.open", @params = new { path = linePath } });
+    JsonElement importedLine = (await nativeLineEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("shapes")[0];
+    Check(importedLine.GetProperty("flipV").GetBoolean() && importedLine.GetProperty("anchor").GetProperty("height").GetDouble() == .01,
+        "Native horizontal flipped line imports");
+    await LineRun("shape.change", new { id = 1, type = "rectangle" });
+    JsonElement converted = (await lineEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("shapes")[0];
+    Check(!converted.GetProperty("flipV").GetBoolean() && converted.GetProperty("anchor").GetProperty("height").GetDouble() >= 4,
+        "Changing a line to a shape restores valid bounds");
+}
+finally { File.Delete(linePath); }
+WorksheetEngine roundedEngine = new();
+await roundedEngine.SendAsync("engine.execute", new { command = "insert.shape", @params = new { kind = "roundedRectangle", at = "A1" } });
+await roundedEngine.SendAsync("engine.execute", new { command = "shape.setText", @params = new { id = 1, text = " 一行目 \n二行目", bold = true } });
+string multilinePath = Path.Combine(Path.GetTempPath(), $"chlorella-shape-text-{Guid.NewGuid():N}.xlsx");
+try
+{
+    await roundedEngine.SendAsync("engine.execute", new { command = "file.saveAs", @params = new { path = multilinePath } });
+    using (FileStream file = File.Open(multilinePath, FileMode.Open, FileAccess.ReadWrite))
+    using (ZipArchive zip = new(file, ZipArchiveMode.Update))
+        foreach (ZipArchiveEntry entry in zip.Entries.Where(entry => entry.FullName.StartsWith("chlorella/")).ToArray()) entry.Delete();
+    WorksheetEngine multilineEngine = new();
+    await multilineEngine.SendAsync("engine.execute", new { command = "file.open", @params = new { path = multilinePath } });
+    JsonElement shape = await multilineEngine.SendAsync("sheet.shape", new { id = 1 });
+    Check(shape.GetProperty("text").GetString() == " 一行目 \n二行目" && shape.GetProperty("format").GetProperty("bold").GetBoolean(),
+        "Native Excel drawing preserves multiline text, spaces and formatting");
+}
+finally { File.Delete(multilinePath); }
+string roundedPdfPath = Path.Combine(Path.GetTempPath(), $"chlorella-rounded-{Guid.NewGuid():N}.pdf");
+try
+{
+    await roundedEngine.SendAsync("engine.execute", new { command = "file.exportPdf", @params = new { path = roundedPdfPath } });
+    string roundedPdf = System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(roundedPdfPath));
+    Check(roundedPdf.Contains(" c h\nB\n"), "Rounded rectangle uses curved corners in PDF");
+}
+finally { File.Delete(roundedPdfPath); }
 await DrawingRun("insert.shape", new { kind = "ellipse", at = "B2" });
-await DrawingRun("shape.setText", new { id = 1, text = "図形" });
+await DrawingRun("shape.setText", new { id = 1, text = "図形", bold = true, italic = true, underline = true,
+    size = 20, color = "#12AB34" });
+await DrawingRun("shape.setText", new { id = 1, text = "編集後" });
+await DrawingRun("edit.undo", new { });
+JsonElement shapeFormat = (await drawingEngine.SendAsync("sheet.shape", new { id = 1 })).GetProperty("format");
+Check(shapeFormat.GetProperty("bold").GetBoolean() && shapeFormat.GetProperty("italic").GetBoolean() &&
+    shapeFormat.GetProperty("underline").GetBoolean() && shapeFormat.GetProperty("size").GetDouble() == 20 &&
+    shapeFormat.GetProperty("text_color").GetProperty("Rgb").GetUInt32() == 0x12ab34, "Shape text formatting survives undo");
 await DrawingRun("chart.shapeFill", new { id = 1, color = "#123456" });
 await DrawingRun("object.move", new { kind = "shape", id = 1, dx = 7, dy = 8, width = 120, height = 90 });
 await DrawingRun("object.move", new { kind = "shape", id = 1, dx = 207, dy = 56, width = 120, height = 90 });
@@ -400,6 +514,21 @@ await DrawingRun("object.duplicate", new { kind = "shape", id = 1 });
 await DrawingRun("edit.undo", new { });
 JsonElement drawingView = await drawingEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F4" } });
 Check(drawingView.GetProperty("shapes").GetArrayLength() == 1 && drawingView.GetProperty("tables").GetArrayLength() == 1 && drawingView.GetProperty("images").GetArrayLength() == 1, "Drawing and table undo");
+await DrawingRun("object.transform", new { kind = "shape", id = 1, rotation = 45.0 });
+await DrawingRun("edit.undo", new { });
+Check((await drawingEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("shapes")[0].GetProperty("rotation").GetDouble() == 0,
+    "Rotation supports undo");
+await DrawingRun("edit.redo", new { });
+await DrawingRun("object.transform", new { kind = "image", id = 2, rotation = 270.0 });
+await DrawingRun("image.crop", new { kind = "image", id = 2, left = .1, top = .2, right = .15, bottom = .05 });
+bool badCropRejected = false;
+try { await DrawingRun("image.crop", new { kind = "image", id = 2, left = .6, top = 0, right = .4, bottom = 0 }); }
+catch (InvalidOperationException) { badCropRejected = true; }
+Check(badCropRejected && (await drawingEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } }))
+    .GetProperty("images")[0].GetProperty("cropLeft").GetDouble() == .1, "Invalid crop does not alter the image");
+await DrawingRun("edit.undo", new { });
+Check((await drawingEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("images")[0].GetProperty("cropLeft").GetDouble() == 0, "Crop supports undo");
+await DrawingRun("edit.redo", new { });
 string? keptDrawing = Environment.GetEnvironmentVariable("CHLORELLA_TEST_XLSX");
 string drawingPath = keptDrawing ?? Path.Combine(Path.GetTempPath(), $"chlorella-drawing-{Guid.NewGuid():N}.xlsx");
 try
@@ -410,7 +539,7 @@ try
     {
         using StreamReader drawingXml = new(workbookZip.GetEntry("xl/drawings/drawing1.xml")?.Open() ?? throw new Exception("Native drawing missing"));
         string xml = drawingXml.ReadToEnd();
-        Check(xml.Contains("oneCellAnchor") && xml.Contains("図形") && xml.Contains("blipFill") && workbookZip.GetEntry("xl/media/image1_1.png") is not null && workbookZip.GetEntry("xl/worksheets/_rels/sheet1.xml.rels") is not null, "Native drawing and image parts");
+        Check(xml.Contains("oneCellAnchor") && xml.Contains("図形") && xml.Contains("blipFill") && xml.Contains("rot=\"2700000\"") && xml.Contains("l=\"10000\"") && workbookZip.GetEntry("xl/media/image1_1.png") is not null && workbookZip.GetEntry("xl/worksheets/_rels/sheet1.xml.rels") is not null, "Native drawing, rotation and crop parts");
         using StreamReader tableXml = new(workbookZip.GetEntry("xl/tables/table1.xml")?.Open() ?? throw new Exception("Native table missing"));
         string tableDefinition = tableXml.ReadToEnd();
         Check(tableDefinition.Contains("D1:F3") && tableDefinition.Contains("headerRowCount=\"1\"") && tableDefinition.Contains("商品"), "Native table preserves valid header");
@@ -420,8 +549,84 @@ try
     JsonElement shape = drawingView.GetProperty("shapes")[0];
     Check(shape.GetProperty("text").GetString() == "図形" && shape.GetProperty("fill").GetProperty("Rgb").GetUInt32() == 0x123456 && shape.GetProperty("anchor").GetProperty("width").GetDouble() == 120 && drawingView.GetProperty("tables").GetArrayLength() == 1, "Drawing and table roundtrip");
     Check(drawingView.GetProperty("images")[0].GetProperty("anchor").GetProperty("width").GetDouble() == 80 && Convert.FromBase64String((await drawingEngine.SendAsync("sheet.picture", new { id = 2 })).GetProperty("base64").GetString() ?? "").Length > 8, "Picture data and bounds roundtrip");
+    Check(shape.GetProperty("rotation").GetDouble() == 45 && drawingView.GetProperty("images")[0].GetProperty("rotation").GetDouble() == 270 && drawingView.GetProperty("images")[0].GetProperty("cropLeft").GetDouble() == .1, "Rotation and crop roundtrip");
+    Check(shape.GetProperty("format").GetProperty("bold").GetBoolean() && shape.GetProperty("format").GetProperty("italic").GetBoolean() &&
+        shape.GetProperty("format").GetProperty("underline").GetBoolean() && shape.GetProperty("format").GetProperty("size").GetDouble() == 20 &&
+        shape.GetProperty("format").GetProperty("text_color").GetProperty("Rgb").GetUInt32() == 0x12ab34, "Shape text formatting roundtrips");
+    string legacyPath = Path.Combine(Path.GetTempPath(), $"chlorella-legacy-text-{Guid.NewGuid():N}.xlsx");
+    try
+    {
+        File.Copy(drawingPath, legacyPath);
+        using (FileStream file = File.Open(legacyPath, FileMode.Open, FileAccess.ReadWrite))
+        using (ZipArchive zip = new(file, ZipArchiveMode.Update))
+        {
+            ZipArchiveEntry entry = zip.GetEntry("chlorella/sheet1.json") ?? throw new Exception("Missing drawing metadata");
+            System.Text.Json.Nodes.JsonNode metadata;
+            using (Stream input = entry.Open()) metadata = System.Text.Json.Nodes.JsonNode.Parse(input) ?? throw new Exception("Invalid drawing metadata");
+            foreach (System.Text.Json.Nodes.JsonNode? item in metadata["Objects"]!.AsArray())
+                foreach (string property in new[] { "TextBold", "TextItalic", "TextUnderline", "TextSize", "TextColor" }) item!.AsObject().Remove(property);
+            entry.Delete();
+            using (Stream output = zip.CreateEntry("chlorella/sheet1.json").Open())
+                System.Text.Json.JsonSerializer.Serialize(output, metadata);
+            ZipArchiveEntry marker = zip.GetEntry("chlorella-format.txt") ?? throw new Exception("Missing workbook marker");
+            marker.Delete();
+            using System.Security.Cryptography.IncrementalHash hash = System.Security.Cryptography.IncrementalHash.CreateHash(
+                System.Security.Cryptography.HashAlgorithmName.SHA256);
+            foreach (ZipArchiveEntry part in zip.Entries.OrderBy(part => part.FullName, StringComparer.Ordinal))
+            {
+                hash.AppendData(System.Text.Encoding.UTF8.GetBytes(part.FullName + "\0"));
+                using Stream partStream = part.Open();
+                using MemoryStream bytes = new();
+                partStream.CopyTo(bytes);
+                hash.AppendData(bytes.ToArray());
+            }
+            using StreamWriter writer = new(zip.CreateEntry("chlorella-format.txt").Open(), new System.Text.UTF8Encoding(false));
+            writer.Write(Convert.ToHexString(hash.GetHashAndReset()));
+        }
+        WorksheetEngine legacyEngine = new();
+        await legacyEngine.SendAsync("engine.execute", new { command = "file.open", @params = new { path = legacyPath } });
+        JsonElement legacyFormat = (await legacyEngine.SendAsync("sheet.shape", new { id = 1 })).GetProperty("format");
+        Check(!legacyFormat.GetProperty("bold").GetBoolean() && legacyFormat.GetProperty("size").GetDouble() == 14 &&
+            legacyFormat.GetProperty("text_color").GetProperty("Rgb").GetUInt32() == 0xffffff, "Older shape metadata receives default text formatting");
+    }
+    finally { File.Delete(legacyPath); }
+    string nativeOnlyPath = Path.Combine(Path.GetTempPath(), $"chlorella-native-{Guid.NewGuid():N}.xlsx");
+    try
+    {
+        File.Copy(drawingPath, nativeOnlyPath);
+        using (FileStream file = File.Open(nativeOnlyPath, FileMode.Open, FileAccess.ReadWrite))
+        using (ZipArchive zip = new(file, ZipArchiveMode.Update))
+            foreach (ZipArchiveEntry entry in zip.Entries.Where(entry => entry.FullName.StartsWith("chlorella/")).ToArray()) entry.Delete();
+        WorksheetEngine nativeEngine = new();
+        await nativeEngine.SendAsync("engine.execute", new { command = "file.open", @params = new { path = nativeOnlyPath } });
+        JsonElement nativeView = await nativeEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } });
+        Check(nativeView.GetProperty("shapes")[0].GetProperty("rotation").GetDouble() == 45 &&
+            nativeView.GetProperty("images")[0].GetProperty("rotation").GetDouble() == 270 &&
+            nativeView.GetProperty("images")[0].GetProperty("cropLeft").GetDouble() == .1, "Native Excel drawing import retains rotation and crop");
+        JsonElement nativeFormat = nativeView.GetProperty("shapes")[0].GetProperty("format");
+        Check(nativeFormat.GetProperty("bold").GetBoolean() && nativeFormat.GetProperty("italic").GetBoolean() &&
+            nativeFormat.GetProperty("underline").GetBoolean() && nativeFormat.GetProperty("size").GetDouble() == 20 &&
+            nativeFormat.GetProperty("text_color").GetProperty("Rgb").GetUInt32() == 0x12ab34, "Native Excel import retains shape text formatting");
+    }
+    finally { File.Delete(nativeOnlyPath); }
 }
 finally { if (keptDrawing is null) File.Delete(drawingPath); }
+WorksheetEngine edgeCropEngine = new();
+async Task<JsonElement> EdgeCropRun(string command, object args) => await edgeCropEngine.SendAsync("engine.execute", new { command, @params = args });
+await EdgeCropRun("insert.picture", new { at = "A1", path = Path.Combine(AppContext.BaseDirectory, "../../../../../Assets/AppIcon-16.png") });
+await EdgeCropRun("image.crop", new { kind = "image", id = 1, left = .9999999, top = 0, right = 0, bottom = 0 });
+string edgeCropPath = Path.Combine(Path.GetTempPath(), $"chlorella-crop-edge-{Guid.NewGuid():N}.xlsx");
+try
+{
+    await EdgeCropRun("file.saveAs", new { path = edgeCropPath });
+    using FileStream file = File.OpenRead(edgeCropPath);
+    using ZipArchive zip = new(file, ZipArchiveMode.Read);
+    using Stream input = zip.GetEntry("xl/drawings/drawing1.xml")?.Open() ?? throw new Exception("Missing cropped image");
+    System.Xml.Linq.XNamespace a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+    System.Xml.Linq.XElement crop = System.Xml.Linq.XDocument.Load(input).Descendants(a + "srcRect").Single();
+    Check((int?)crop.Attribute("l") == 99999 && (int?)crop.Attribute("r") == 0, "Near-total crop remains valid in native Excel output");
+}
+finally { File.Delete(edgeCropPath); }
 WorksheetEngine tableEngine = new();
 async Task<JsonElement> TableRun(string command, object args) => await tableEngine.SendAsync("engine.execute", new { command, @params = args });
 await TableRun("insert.table", new { range = "A1:B3", header = true });
@@ -753,7 +958,8 @@ try
         xml.Save(output);
     }
     JsonElement skipped = await ThirdPartyRun("file.open", new { path = croppedPath });
-    Check(skipped.GetProperty("importedTables").GetInt32() == 1 && skipped.GetProperty("importedDrawings").GetInt32() == 0 && skipped.GetProperty("skippedDrawings").GetInt32() == 1, "Unsupported cropped image is reported while table is retained");
+    Check(skipped.GetProperty("importedTables").GetInt32() == 1 && skipped.GetProperty("importedDrawings").GetInt32() == 1 && skipped.GetProperty("skippedDrawings").GetInt32() == 0 &&
+        (await thirdPartyEngine.SendAsync("sheet.viewport", new { ranges = new[] { "A1:F10" } })).GetProperty("images")[0].GetProperty("cropLeft").GetDouble() == .1, "External cropped image is imported with its crop");
     using (FileStream file = File.Open(croppedPath, FileMode.Open, FileAccess.ReadWrite))
     using (ZipArchive zip = new(file, ZipArchiveMode.Update)) zip.GetEntry("xl/worksheets/sheet1.xml")?.Delete();
     bool invalidRejected = false;
@@ -778,6 +984,8 @@ try
     byte[] pdf = File.ReadAllBytes(pdfPath);
     string pdfText = System.Text.Encoding.ASCII.GetString(pdf);
     Check(pdfText.StartsWith("%PDF-1.4") && pdfText.Contains("%%EOF") && pdfText.Contains("/SMask") && pdfText.Contains("/Im2 Do") && pdfText.Contains("56F35F62"), "PDF includes image, transparency, and shape text");
+    Check(System.Text.RegularExpressions.Regex.IsMatch(pdfText, @"-?0\.000000 1\.000000 -1\.000000 -?0\.000000") &&
+        pdfText.Contains("60.000 45.000 re W n 80.000 0 0 60.000"), "PDF applies the image rotation and crop clip");
 }
 finally { if (keptPdf is null) File.Delete(pdfPath); }
 WorksheetEngine layoutEngine = new();

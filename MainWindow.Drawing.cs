@@ -18,10 +18,24 @@ public sealed partial class MainWindow
             if (element is not Canvas overlay) continue;
             for (int i = overlay.Children.Count - 1; i >= 0; i--)
             {
-                if (overlay.Children[i] is DrawingObjectButton { Tag: "resizeHandle" }) overlay.Children.RemoveAt(i);
+                if (overlay.Children[i] is DrawingObjectButton { Tag: string tag } && IsObjectHandle(tag)) overlay.Children.RemoveAt(i);
                 else if (overlay.Children[i] is DrawingObjectButton button) button.BorderThickness = new Thickness(0);
             }
         }
+    }
+
+    static bool IsObjectHandle(string tag) => tag is "resizeHandle" or "rotationHandle" || tag.StartsWith("lineEndpoint:");
+
+    void FocusDrawingHandle(string tag)
+    {
+        foreach (UIElement element in CellGrid.Children)
+            if (element is Canvas overlay)
+                foreach (UIElement child in overlay.Children)
+                    if (child is Button button && Equals(button.Tag, tag))
+                    {
+                        button.Focus(FocusState.Programmatic);
+                        return;
+                    }
     }
 
     async Task AddDrawingObjectsAsync(JsonElement view)
@@ -43,6 +57,8 @@ public sealed partial class MainWindow
             Microsoft.UI.Xaml.Media.Brush transparent = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
             Microsoft.UI.Xaml.Media.Brush fill = ColorBrush(shape.GetProperty("fill"), colors) ?? transparent;
             Microsoft.UI.Xaml.Media.Brush line = ColorBrush(shape.GetProperty("line"), colors) ?? transparent;
+            bool lineFlip = shape.GetProperty("flipV").GetBoolean();
+            (double lineLength, double lineAngle) = DrawingGeometry.LineDirection(width, height, lineFlip);
             Microsoft.UI.Xaml.Shapes.Shape? visual = kind switch
             {
                 "Rectangle" => new Microsoft.UI.Xaml.Shapes.Rectangle(),
@@ -71,7 +87,7 @@ public sealed partial class MainWindow
                     new Microsoft.UI.Xaml.Media.PointCollection { new(width * .25, 0), new(width * .75, 0), new(width,
                         height / 2), new(width * .75, height), new(width * .25, height), new(0, height / 2) }
                 },
-                "Line" => new Microsoft.UI.Xaml.Shapes.Line { X1 = 0, Y1 = 0, X2 = width, Y2 = Math.Max(1, height) },
+                "Line" => new Microsoft.UI.Xaml.Shapes.Line { X1 = 0, Y1 = .5, X2 = lineLength, Y2 = .5 },
                 "Arrow" => new Microsoft.UI.Xaml.Shapes.Polygon
                 {
                     Points =
@@ -82,8 +98,8 @@ public sealed partial class MainWindow
                 _ => null,
             };
             if (visual is null) continue;
-            visual.Width = width;
-            visual.Height = Math.Max(1, height);
+            visual.Width = kind == "Line" ? lineLength : width;
+            visual.Height = kind == "Line" ? 1 : Math.Max(1, height);
             visual.Fill = fill;
             visual.Stroke = line;
             visual.StrokeThickness = 1;
@@ -95,7 +111,8 @@ public sealed partial class MainWindow
             string shapeText = shape.GetProperty("text").GetString() ?? "";
             if (shapeText.Length > 0)
             {
-                JsonElement textColor = shape.GetProperty("format").GetProperty("text_color");
+                JsonElement format = shape.GetProperty("format");
+                JsonElement textColor = format.GetProperty("text_color");
                 TextBlock label = new()
                 {
                     Text = shapeText,
@@ -103,6 +120,10 @@ public sealed partial class MainWindow
                     TextAlignment = TextAlignment.Center,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
+                    FontWeight = format.GetProperty("bold").GetBoolean() ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal,
+                    FontStyle = format.GetProperty("italic").GetBoolean() ? Windows.UI.Text.FontStyle.Italic : Windows.UI.Text.FontStyle.Normal,
+                    TextDecorations = format.GetProperty("underline").GetBoolean() ? Windows.UI.Text.TextDecorations.Underline : Windows.UI.Text.TextDecorations.None,
+                    FontSize = format.GetProperty("size").GetDouble(),
                     Foreground = ColorBrush(textColor, colors) ?? new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White)
                 };
                 shapeContent.Children.Add(label);
@@ -110,17 +131,24 @@ public sealed partial class MainWindow
             DrawingObjectButton objectButton = new()
             {
                 Content = shapeContent,
-                Width = Math.Max(24, width),
-                Height = Math.Max(24, height),
+                Width = Math.Max(24, kind == "Line" ? lineLength : width),
+                Height = kind == "Line" ? 24 : Math.Max(24, height),
                 MinWidth = 0,
                 MinHeight = 0,
                 Padding = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
                 Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent),
                 BorderBrush = selectedShape == id ? (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"] : null,
-                BorderThickness = new Thickness(selectedShape == id ? 2 : 0)
+                BorderThickness = new Thickness(selectedShape == id && kind != "Line" ? 2 : 0)
             };
+            objectButton.RenderTransformOrigin = new Windows.Foundation.Point(.5, .5);
+            objectButton.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform
+                { Angle = shape.GetProperty("rotation").GetDouble() + (kind == "Line" ? lineAngle : 0) };
+            double hitOffsetX = kind == "Line" ? (objectButton.Width - width) / 2 : 0;
+            double hitOffsetY = kind == "Line" ? (objectButton.Height - height) / 2 : 0;
             AutomationProperties.SetName(objectButton, $"図形 {id} {kind}");
-            objectButton.ContextFlyout = ObjectMenu("shape", id, shapeText, kind != "Line");
+            objectButton.ContextFlyout = ObjectMenu("shape", id, shapeText, kind != "Line", shape);
             objectButton.GotFocus += (_, _) =>
             {
                 selectedImage = null;
@@ -137,9 +165,11 @@ public sealed partial class MainWindow
                 selectedImage = null;
                 selectedShape = id;
                 ShapeTab.Visibility = Visibility.Visible;
-                AddObjectResizeHandles(overlay, objectButton, "shape", id, x, y, Math.Max(1, width), Math.Max(1, height), dx, dy);
+                if (kind == "Line") AddLineEndpointHandles(overlay, objectButton, id, x, y, width, height, dx, dy,
+                    shape.GetProperty("flipV").GetBoolean(), shape.GetProperty("rotation").GetDouble());
+                else AddObjectResizeHandles(overlay, objectButton, "shape", id, x, y, Math.Max(1, width), Math.Max(1, height), dx, dy);
                 objectButton.BorderBrush = (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"];
-                objectButton.BorderThickness = new Thickness(2);
+                objectButton.BorderThickness = new Thickness(kind == "Line" ? 0 : 2);
                 objectButton.Focus(FocusState.Pointer);
                 origin = e.GetCurrentPoint(overlay).Position;
                 moving = objectButton.CapturePointer(e.Pointer);
@@ -155,8 +185,8 @@ public sealed partial class MainWindow
                     nx = SnapBoundary(nx, 48, columnWidths, viewColumns);
                     ny = SnapBoundary(ny, 25, rowHeights, viewRows);
                 }
-                Canvas.SetLeft(objectButton, nx);
-                Canvas.SetTop(objectButton, ny);
+                Canvas.SetLeft(objectButton, nx - hitOffsetX);
+                Canvas.SetTop(objectButton, ny - hitOffsetY);
                 e.Handled = true;
             }), true);
             objectButton.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(async (_, e) =>
@@ -176,8 +206,8 @@ public sealed partial class MainWindow
                 {
                     if (Math.Abs(point.X - origin.X) + Math.Abs(point.Y - origin.Y) <= 1 && !inputPending)
                     {
-                        Canvas.SetLeft(objectButton, x);
-                        Canvas.SetTop(objectButton, y);
+                        Canvas.SetLeft(objectButton, x - hitOffsetX);
+                        Canvas.SetTop(objectButton, y - hitOffsetY);
                         return;
                     }
                     bool committed = false;
@@ -200,8 +230,8 @@ public sealed partial class MainWindow
                         }
                         else
                         {
-                            Canvas.SetLeft(objectButton, x);
-                            Canvas.SetTop(objectButton, y);
+                            Canvas.SetLeft(objectButton, x - hitOffsetX);
+                            Canvas.SetTop(objectButton, y - hitOffsetY);
                         }
 
                     }
@@ -211,8 +241,8 @@ public sealed partial class MainWindow
             {
                 if (!moving) return;
                 moving = false;
-                Canvas.SetLeft(objectButton, x);
-                Canvas.SetTop(objectButton, y);
+                Canvas.SetLeft(objectButton, x - hitOffsetX);
+                Canvas.SetTop(objectButton, y - hitOffsetY);
             }
 ;
             objectButton.KeyDown += async (_, e) =>
@@ -234,11 +264,15 @@ public sealed partial class MainWindow
             }
 ;
             objectButton.Tag = $"shape:{id}";
-            Canvas.SetLeft(objectButton, x);
-            Canvas.SetTop(objectButton, y);
+            Canvas.SetLeft(objectButton, x - hitOffsetX);
+            Canvas.SetTop(objectButton, y - hitOffsetY);
             overlay.Children.Add(objectButton);
-            if (selectedShape == id) AddObjectResizeHandles(overlay, objectButton, "shape", id, x, y, Math.Max(1, width),
-                Math.Max(1, height), dx, dy);
+            if (selectedShape == id)
+            {
+                if (kind == "Line") AddLineEndpointHandles(overlay, objectButton, id, x, y, width, height, dx, dy,
+                    shape.GetProperty("flipV").GetBoolean(), shape.GetProperty("rotation").GetDouble());
+                else AddObjectResizeHandles(overlay, objectButton, "shape", id, x, y, Math.Max(1, width), Math.Max(1, height), dx, dy);
+            }
         }
         foreach (JsonElement picture in view.GetProperty("images").EnumerateArray())
         {
@@ -259,18 +293,26 @@ public sealed partial class MainWindow
                 stream.Seek(0);
                 Microsoft.UI.Xaml.Media.Imaging.BitmapImage bitmap = new();
                 await bitmap.SetSourceAsync(stream);
+                double cropLeft = picture.GetProperty("cropLeft").GetDouble(), cropTop = picture.GetProperty("cropTop").GetDouble(),
+                    cropRight = picture.GetProperty("cropRight").GetDouble(), cropBottom = picture.GetProperty("cropBottom").GetDouble();
+                double imageWidth = width / (1 - cropLeft - cropRight), imageHeight = height / (1 - cropTop - cropBottom);
                 Microsoft.UI.Xaml.Controls.Image image = new()
                 {
                     Source = bitmap,
-                    Width = width,
-                    Height = height,
+                    Width = imageWidth,
+                    Height = imageHeight,
                     Stretch = Microsoft.UI.Xaml.Media.Stretch.Fill
                 };
+                Canvas imageViewport = new() { Width = width, Height = height, IsHitTestVisible = false,
+                    Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry { Rect = new Windows.Foundation.Rect(0, 0, width, height) } };
+                Canvas.SetLeft(image, -cropLeft * imageWidth);
+                Canvas.SetTop(image, -cropTop * imageHeight);
+                imageViewport.Children.Add(image);
                 AutomationProperties.SetName(image, picture.GetProperty("alt").GetString() ?? "画像");
                 uint id = picture.GetProperty("id").GetUInt32();
                 DrawingObjectButton imageButton = new()
                 {
-                    Content = image,
+                    Content = imageViewport,
                     Width = Math.Max(1, width),
                     Height = Math.Max(1, height),
                     MinWidth = 0,
@@ -280,8 +322,10 @@ public sealed partial class MainWindow
                     BorderBrush = selectedImage == id ? (Microsoft.UI.Xaml.Media.Brush)RootGrid.Resources["MergeAccentBrush"] : null,
                     BorderThickness = new Thickness(selectedImage == id ? 2 : 0),
                     Tag = $"image:{id}",
-                    ContextFlyout = ObjectMenu("image", id, "", false, picture.GetProperty("anchor"))
+                    ContextFlyout = ObjectMenu("image", id, "", false, picture, bitmap)
                 };
+                imageButton.RenderTransformOrigin = new Windows.Foundation.Point(.5, .5);
+                imageButton.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = picture.GetProperty("rotation").GetDouble() };
                 AutomationProperties.SetName(imageButton, picture.GetProperty("alt").GetString() ?? "画像");
                 BindImageInteraction(overlay, imageButton, id, picture.GetProperty("anchor"), x, y);
                 Canvas.SetLeft(imageButton, x);
@@ -298,7 +342,8 @@ public sealed partial class MainWindow
         }
         CellGrid.Children.Add(overlay);
     }
-    MenuFlyout ObjectMenu(string kind, uint id, string text, bool canEditText, JsonElement anchor = default)
+    MenuFlyout ObjectMenu(string kind, uint id, string text, bool canEditText, JsonElement drawing,
+        Microsoft.UI.Xaml.Media.Imaging.BitmapImage? bitmap = null)
     {
         MenuFlyout menu = new();
         void Add(string label, string glyph, Func<Task> action)
@@ -332,7 +377,12 @@ public sealed partial class MainWindow
             dirty = true;
             await RefreshAsync();
         });
-        if (kind == "image") Add("位置とサイズ…", "\uE8A3", () => EditImageBoundsAsync(id, anchor));
+        Add("回転…", "\uE7AD", () => EditObjectRotationAsync(kind, id, drawing.GetProperty("rotation").GetDouble()));
+        if (kind == "image")
+        {
+            Add("トリミング…", "\uE7A8", () => EditImageCropAsync(id, drawing, bitmap));
+            Add("位置とサイズ…", "\uE8A3", () => EditImageBoundsAsync(id, drawing.GetProperty("anchor")));
+        }
         menu.Items.Add(new MenuFlyoutSeparator());
         Add("最前面へ移動（同種）", "\uE70E", async () =>
         {
@@ -361,30 +411,7 @@ public sealed partial class MainWindow
         if (canEditText)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
-            Add("テキストの編集", "\uE70F", async () =>
-            {
-                TextBox input = new()
-                {
-                    Text = text,
-                    AcceptsReturn = true,
-                    TextWrapping = TextWrapping.Wrap,
-                    MinWidth = 300,
-                    MinHeight = 100
-                };
-                AutomationProperties.SetName(input, "図形のテキスト");
-                ContentDialog dialog = new()
-                {
-                    XamlRoot = RootGrid.XamlRoot,
-                    Title = "図形のテキスト",
-                    Content = input,
-                    PrimaryButtonText = "適用",
-                    CloseButtonText = "キャンセル"
-                };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-                await ExecuteAsync("shape.setText", new { id, text = input.Text });
-                dirty = true;
-                await RefreshAsync();
-            });
+            Add("テキストの編集", "\uE70F", () => EditShapeTextAsync(id, drawing));
         }
         return menu;
     }
@@ -414,13 +441,23 @@ public sealed partial class MainWindow
     void AddObjectResizeHandles(Canvas overlay, Button shape, string kind, uint id, double x, double y, double width,
         double height, double dx, double dy)
     {
+        double rotation = (shape.RenderTransform as Microsoft.UI.Xaml.Media.RotateTransform)?.Angle ?? 0;
+        double radians = rotation * Math.PI / 180, cosine = Math.Cos(radians), sine = Math.Sin(radians);
         List<(Button Button, int X, int Y)> handles = [];
+        Button? rotationHandle = null;
         void PlaceHandles(double left, double top, double w, double h)
         {
             foreach ((Button button, int hx, int hy) in handles)
             {
-                Canvas.SetLeft(button, left + (hx + 1) * w / 2 - 5);
-                Canvas.SetTop(button, top + (hy + 1) * h / 2 - 5);
+                double px = hx * w / 2, py = hy * h / 2;
+                Canvas.SetLeft(button, left + w / 2 + px * cosine - py * sine - 5);
+                Canvas.SetTop(button, top + h / 2 + px * sine + py * cosine - 5);
+            }
+            if (rotationHandle is not null)
+            {
+                double distance = h / 2 + 24;
+                Canvas.SetLeft(rotationHandle, left + w / 2 + distance * sine - 10);
+                Canvas.SetTop(rotationHandle, top + h / 2 - distance * cosine - 10);
             }
         }
         foreach ((int hx, int hy, string label) in new[] { (-1, -1, "左上"), (0, -1, "上"), (1, -1, "右上"),
@@ -443,17 +480,19 @@ public sealed partial class MainWindow
             (double Left, double Top, double Width, double Height) Calculate(Windows.Foundation.Point point)
             {
                 double left = x, top = y, right = x + width, bottom = y + height;
-                if (hx < 0) left += point.X - origin.X;
-                else if (hx > 0) right += point.X - origin.X;
-                if (hy < 0) top += point.Y - origin.Y;
-                else if (hy > 0) bottom += point.Y - origin.Y;
+                double deltaX = point.X - origin.X, deltaY = point.Y - origin.Y;
                 if (AltDown())
                 {
-                    if (hx < 0) left = SnapBoundary(left, 48, columnWidths, viewColumns);
-                    if (hx > 0) right = SnapBoundary(right, 48, columnWidths, viewColumns);
-                    if (hy < 0) top = SnapBoundary(top, 25, rowHeights, viewRows);
-                    if (hy > 0) bottom = SnapBoundary(bottom, 25, rowHeights, viewRows);
+                    double handleX = x + width / 2 + hx * width / 2 * cosine - hy * height / 2 * sine;
+                    double handleY = y + height / 2 + hx * width / 2 * sine + hy * height / 2 * cosine;
+                    deltaX = SnapBoundary(handleX + deltaX, 48, columnWidths, viewColumns) - handleX;
+                    deltaY = SnapBoundary(handleY + deltaY, 25, rowHeights, viewRows) - handleY;
                 }
+                double localX = deltaX * cosine + deltaY * sine, localY = -deltaX * sine + deltaY * cosine;
+                if (hx < 0) left += localX;
+                else if (hx > 0) right += localX;
+                if (hy < 0) top += localY;
+                else if (hy > 0) bottom += localY;
                 double w = Math.Max(4, right - left), h = Math.Max(4, bottom - top);
                 if (hx != 0 && hy != 0)
                 {
@@ -464,6 +503,9 @@ public sealed partial class MainWindow
                 }
                 left = hx < 0 ? x + width - w : x;
                 top = hy < 0 ? y + height - h : y;
+                double centerX = left + w / 2 - (x + width / 2), centerY = top + h / 2 - (y + height / 2);
+                left = x + width / 2 + centerX * cosine - centerY * sine - w / 2;
+                top = y + height / 2 + centerX * sine + centerY * cosine - h / 2;
                 return (left, top, w, h);
             }
             handle.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
@@ -479,11 +521,12 @@ public sealed partial class MainWindow
                 (double Left, double Top, double Width, double Height) bounds = Calculate(e.GetCurrentPoint(overlay).Position);
                 Canvas.SetLeft(shape, bounds.Left);
                 Canvas.SetTop(shape, bounds.Top);
-                shape.RenderTransform = new Microsoft.UI.Xaml.Media.ScaleTransform
-                {
-                    ScaleX = bounds.Width / width,
-                    ScaleY = bounds.Height / height
-                };
+                Microsoft.UI.Xaml.Media.TransformGroup transforms = new();
+                transforms.Children.Add(new Microsoft.UI.Xaml.Media.ScaleTransform { ScaleX = bounds.Width / width, ScaleY = bounds.Height / height });
+                transforms.Children.Add(new Microsoft.UI.Xaml.Media.RotateTransform { Angle = rotation });
+                shape.RenderTransform = transforms;
+                Canvas.SetLeft(shape, bounds.Left + (bounds.Width - width) / 2);
+                Canvas.SetTop(shape, bounds.Top + (bounds.Height - height) / 2);
                 PlaceHandles(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
                 e.Handled = true;
             }), true);
@@ -523,7 +566,7 @@ public sealed partial class MainWindow
                         {
                             Canvas.SetLeft(shape, x);
                             Canvas.SetTop(shape, y);
-                            shape.RenderTransform = null;
+                            shape.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = rotation };
                             PlaceHandles(x, y, width, height);
                         }
                     }
@@ -535,7 +578,7 @@ public sealed partial class MainWindow
                 resizing = false;
                 Canvas.SetLeft(shape, x);
                 Canvas.SetTop(shape, y);
-                shape.RenderTransform = null;
+                shape.RenderTransform = new Microsoft.UI.Xaml.Media.RotateTransform { Angle = rotation };
                 PlaceHandles(x, y, width, height);
             }
 ;
@@ -543,7 +586,9 @@ public sealed partial class MainWindow
             {
                 double mx = e.Key == VirtualKey.Left ? -1 : e.Key == VirtualKey.Right ? 1 : 0;
                 double my = e.Key == VirtualKey.Up ? -1 : e.Key == VirtualKey.Down ? 1 : 0;
-                if ((mx == 0 && my == 0) || (hx == 0 && my == 0) || (hy == 0 && mx == 0)) return;
+                if ((mx == 0 && my == 0) ||
+                    ((hx == 0 || Math.Abs(mx * cosine + my * sine) < 1e-9) &&
+                     (hy == 0 || Math.Abs(-mx * sine + my * cosine) < 1e-9))) return;
                 e.Handled = true;
                 origin = new Windows.Foundation.Point(0, 0);
                 (double Left, double Top, double Width, double Height) bounds = Calculate(new Windows.Foundation.Point(mx, my));
@@ -568,6 +613,7 @@ public sealed partial class MainWindow
             overlay.Children.Add(handle);
         }
         PlaceHandles(x, y, width, height);
+        rotationHandle = AddRotationHandle(overlay, shape, kind, id, x, y, width, height, rotation);
     }
     void FocusShape(uint id) => FocusObject("shape", id);
     void FocusObject(string kind, uint id)
@@ -593,8 +639,8 @@ public sealed partial class MainWindow
         {
             x += viewportX.GetDouble();
             y += viewportY.GetDouble();
-            return x < 48 + columnWidths.Take(viewColumns).Sum() && x + width > 48 &&
-                y < 25 + rowHeights.Take(viewRows).Sum() && y + height > 25;
+            // The engine includes rotated bounds when deciding which objects intersect the viewport.
+            return true;
         }
         if (row < 0 || col < 0 || row >= viewRows || col >= viewColumns) return false;
         for (int i = 0; i < col; i++) x += columnWidths[i];

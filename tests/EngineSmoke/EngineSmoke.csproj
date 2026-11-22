@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Remove="tmp/**/*.cs" />
     <Compile Include="../../IWorksheetDataSource.cs" Link="IWorksheetDataSource.cs" />
+    <Compile Include="../../DrawingGeometry.cs" Link="DrawingGeometry.cs" />
     <Compile Include="../../WorksheetEngine*.cs" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

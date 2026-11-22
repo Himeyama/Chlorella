@@ -25,7 +25,13 @@ sealed partial class WorksheetEngine
             metadata.Objects.Any(item => item is null || item.Id == 0 || item.Kind is not ("shape" or "image") ||
                 item.Row is < 0 or >= 1048576 || item.Col is < 0 or >= 16384 || !double.IsFinite(item.Dx) ||
                     !double.IsFinite(item.Dy) || !double.IsFinite(item.Width) || !double.IsFinite(item.Height) ||
-                        item.Width is < 4 or > 10000 || item.Height is < 4 or > 10000 || item.Text is null ||
+                        item.Width < (item.Type == "Line" ? .01 : 4) || item.Width > 10000 ||
+                            item.Height < (item.Type == "Line" ? .01 : 4) || item.Height > 10000 || item.Text is null ||
+                            !double.IsFinite(item.TextSize) || item.TextSize is < 4 or > 400 || item.TextColor > 0xffffff ||
+                            !double.IsFinite(item.Rotation) || !double.IsFinite(item.CropLeft) || !double.IsFinite(item.CropTop) ||
+                            !double.IsFinite(item.CropRight) || !double.IsFinite(item.CropBottom) || item.CropLeft < 0 || item.CropTop < 0 ||
+                            item.CropRight < 0 || item.CropBottom < 0 || item.CropLeft + item.CropRight >= 1 ||
+                            item.CropTop + item.CropBottom >= 1 ||
                             (item.Kind == "image" && item.Data is null)) ||
             metadata.Objects.Select(item => item.Id).Distinct().Count() != metadata.Objects.Length ||
             metadata.Tables.Any(t => t is null || t.Top < 0 || t.Left < 0 || t.Bottom < t.Top || t.Right < t.Left ||

@@ -2,7 +2,7 @@
 
 Windows 向けの表計算アプリです。
 
-<img width="600" src="https://github.com/user-attachments/assets/129ef786-1a8f-4c6f-9f3a-263e5e675726" />
+<img width="600" src="https://github.com/user-attachments/assets/4e7d057a-4a57-48f1-9f56-7061cea15013" />
 
 .NET 8 SDK と Windows App SDK を使い、`dotnet build Chlorella.csproj -p:Platform=x64 -p:RuntimeIdentifier=win-x64` でビルドします。
 

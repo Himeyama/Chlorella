@@ -5,7 +5,9 @@ namespace Chlorella;
 sealed partial class WorksheetEngine
 {
     sealed record DrawingObject(uint Id, string Kind, string Type, int Row, int Col, double Dx, double Dy, double Width,
-        double Height, uint? Fill, uint? Line, string Text, string? Data);
+        double Height, uint? Fill, uint? Line, string Text, string? Data, double Rotation = 0,
+        double CropLeft = 0, double CropTop = 0, double CropRight = 0, double CropBottom = 0, bool FlipV = false,
+        bool TextBold = false, bool TextItalic = false, bool TextUnderline = false, double TextSize = 14, uint TextColor = 0xffffff);
     sealed record TableFilter(int Column, string[] Values);
     sealed record WorksheetTable(int Top, int Left, int Bottom, int Right, bool Header, TableFilter[]? Filters = null, string? Name = null, bool Totals = false);
 
@@ -18,9 +20,13 @@ sealed partial class WorksheetEngine
         fill = Color(item.Fill),
         line = Color(item.Line),
         text = item.Text,
-        format = new { text_color = Color(0xffffff) }
+        format = new { text_color = Color(item.TextColor), bold = item.TextBold, italic = item.TextItalic,
+            underline = item.TextUnderline, size = item.TextSize },
+        rotation = item.Rotation,
+        flipV = item.FlipV
     };
-    object ImageView(DrawingObject item, double x, double y) => new { id = item.Id, anchor = Anchor(item, x, y), alt = item.Text };
+    object ImageView(DrawingObject item, double x, double y) => new { id = item.Id, anchor = Anchor(item, x, y), alt = item.Text,
+        rotation = item.Rotation, cropLeft = item.CropLeft, cropTop = item.CropTop, cropRight = item.CropRight, cropBottom = item.CropBottom };
     static object Anchor(DrawingObject item, double x, double y) => new
     {
         cell = new { row = item.Row, col = item.Col },
@@ -137,8 +143,39 @@ sealed partial class WorksheetEngine
             return new { };
         }
         DrawingObject changed = original;
-        if (command == "shape.change") changed = original with { Type = ShapeType(args.GetProperty("type").GetString() ?? "") };
-        if (command == "shape.setText") changed = original with { Text = args.GetProperty("text").GetString() ?? "" };
+        if (command == "object.transform")
+        {
+            double rotation = args.GetProperty("rotation").GetDouble();
+            if (!double.IsFinite(rotation)) throw new InvalidOperationException("回転角度が無効です。");
+            changed = original with { Rotation = ((rotation % 360) + 360) % 360 };
+        }
+        if (command == "image.crop")
+        {
+            if (kind != "image") throw new InvalidOperationException("画像を選択してください。");
+            double left = args.GetProperty("left").GetDouble(), top = args.GetProperty("top").GetDouble(),
+                right = args.GetProperty("right").GetDouble(), bottom = args.GetProperty("bottom").GetDouble();
+            if (!double.IsFinite(left) || !double.IsFinite(top) || !double.IsFinite(right) || !double.IsFinite(bottom) ||
+                left < 0 || top < 0 || right < 0 || bottom < 0 || left + right >= 1 || top + bottom >= 1)
+                throw new InvalidOperationException("トリミング範囲が無効です。");
+            changed = original with { CropLeft = left, CropTop = top, CropRight = right, CropBottom = bottom };
+        }
+        if (command == "shape.change")
+        {
+            string type = ShapeType(args.GetProperty("type").GetString() ?? "");
+            changed = original with { Type = type, Width = type == "Line" ? original.Width : Math.Max(4, original.Width),
+                Height = type == "Line" ? original.Height : Math.Max(4, original.Height),
+                FlipV = type == "Line" && original.Type == "Line" && original.FlipV };
+        }
+        if (command == "shape.setText")
+        {
+            double size = args.TryGetProperty("size", out JsonElement sizeValue) ? sizeValue.GetDouble() : original.TextSize;
+            if (!double.IsFinite(size) || size is < 4 or > 400) throw new InvalidOperationException("文字サイズは 4～400 の範囲で指定してください。");
+            uint color = args.TryGetProperty("color", out JsonElement colorValue) ? ParseColor(colorValue) ?? 0xffffff : original.TextColor;
+            changed = original with { Text = args.GetProperty("text").GetString() ?? "", TextSize = size, TextColor = color,
+                TextBold = args.TryGetProperty("bold", out JsonElement bold) ? bold.GetBoolean() : original.TextBold,
+                TextItalic = args.TryGetProperty("italic", out JsonElement italic) ? italic.GetBoolean() : original.TextItalic,
+                TextUnderline = args.TryGetProperty("underline", out JsonElement underline) ? underline.GetBoolean() : original.TextUnderline };
+        }
         if (command == "chart.shapeFill") changed = original with { Fill = ParseColor(args.GetProperty("color")) };
         if (command == "chart.shapeOutline") changed = original with { Line = ParseColor(args.GetProperty("color")) };
         if (command is "object.move" or "object.duplicate")
@@ -153,13 +190,18 @@ sealed partial class WorksheetEngine
             double width = args.TryGetProperty("width", out JsonElement w) ? w.GetDouble() : original.Width;
             double height = args.TryGetProperty("height", out JsonElement h) ? h.GetDouble() : original.Height;
             if (!double.IsFinite(dx) || !double.IsFinite(dy) || !double.IsFinite(width) || !double.IsFinite(height) ||
-                width is < 4 or > 10000 || height is < 4 or > 10000 || Math.Abs(dx) > 100000 ||
+                width < (original.Type == "Line" ? .01 : 4) || width > 10000 ||
+                height < (original.Type == "Line" ? .01 : 4) || height > 10000 || Math.Abs(dx) > 100000 ||
                     Math.Abs(dy) > 100000) throw new InvalidOperationException("図形の位置またはサイズが無効です。");
             Dictionary<int, double> heights = DrawingRowHeights();
             Dictionary<int, double> widths = Current.ColumnWidths.ToDictionary(pair => pair.Key, pair => Math.Max(20, pair.Value));
             (col, dx) = NormalizeDrawingPosition(col, dx, widths, 100, 16383);
             (row, dy) = NormalizeDrawingPosition(row, dy, heights, 24, 1048575);
-            changed = original with { Row = row, Col = col, Dx = dx, Dy = dy, Width = width, Height = height };
+            bool flipV = args.TryGetProperty("flipV", out JsonElement flip) ? flip.GetBoolean() : original.FlipV;
+            double rotation = args.TryGetProperty("rotation", out JsonElement angle) ? angle.GetDouble() : original.Rotation;
+            if (!double.IsFinite(rotation)) throw new InvalidOperationException("回転角度が無効です。");
+            changed = original with { Row = row, Col = col, Dx = dx, Dy = dy, Width = width, Height = height, FlipV = flipV,
+                Rotation = ((rotation % 360) + 360) % 360 };
         }
         if (command == "object.duplicate")
         {

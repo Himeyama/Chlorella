@@ -108,6 +108,8 @@ sealed partial class WorksheetEngine
             or "chart.shapeFill"
             or "chart.shapeOutline"
             or "object.move"
+            or "object.transform"
+            or "image.crop"
             or "object.duplicate"
             or "object.delete"
             or "arrange.bringForward"

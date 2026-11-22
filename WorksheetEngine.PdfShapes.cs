@@ -15,6 +15,18 @@ sealed partial class WorksheetEngine
             "{0:F3} {1:F3} {2}\n", x + width * px, y + height * py, op);
         switch (item.Type)
         {
+            case "RoundedRectangle":
+                double radius = Math.Min(12 * PdfScale, Math.Min(width, height) / 2);
+                double control = radius * 0.55228475;
+                content.AppendFormat(CultureInfo.InvariantCulture,
+                    "{0:F3} {1:F3} m {2:F3} {1:F3} l {3:F3} {1:F3} {4:F3} {5:F3} {4:F3} {6:F3} c " +
+                    "{4:F3} {7:F3} l {4:F3} {8:F3} {3:F3} {9:F3} {2:F3} {9:F3} c " +
+                    "{0:F3} {9:F3} l {10:F3} {9:F3} {11:F3} {8:F3} {11:F3} {7:F3} c " +
+                    "{11:F3} {6:F3} l {11:F3} {5:F3} {10:F3} {1:F3} {0:F3} {1:F3} c h\n",
+                    x + radius, y, x + width - radius, x + width - radius + control, x + width,
+                    y + radius - control, y + radius, y + height - radius, y + height - radius + control,
+                    y + height, x + radius - control, x);
+                break;
             case "Ellipse":
                 double k = 0.55228475;
                 content.AppendFormat(CultureInfo.InvariantCulture,
@@ -65,8 +77,8 @@ sealed partial class WorksheetEngine
                 content.Append("h\n");
                 break;
             case "Line":
-                Point(0, 1, "m");
-                Point(1, 0, "l");
+                Point(0, item.FlipV ? 0 : 1, "m");
+                Point(1, item.FlipV ? 1 : 0, "l");
                 break;
             default:
                 content.AppendFormat(CultureInfo.InvariantCulture, "{0:F3} {1:F3} {2:F3} {3:F3} re\n", x, y, width, height);
@@ -75,7 +87,9 @@ sealed partial class WorksheetEngine
         content.Append(item.Type == "Line" ? (item.Line.HasValue ? "S\n" : "n\n") : item.Fill.HasValue &&
             item.Line.HasValue ? "B\n" : item.Fill.HasValue ? "f\n" : item.Line.HasValue ? "S\n" : "n\n");
         content.Append("Q\n");
-        if (item.Text.Length > 0) PdfText(content, item.Text.Replace('\r', ' ').Replace('\n', ' '), x, top - Math.Max(0,
-            height / 2 - 7), width, Math.Min(16, height), 0xffffff, 10);
+        if (item.Text.Length > 0)
+            PdfCellText(content, item.Text, x, top, width, height,
+                DefaultFont with { Size = item.TextSize * .75, Color = item.TextColor, Bold = item.TextBold,
+                    Italic = item.TextItalic, Underline = item.TextUnderline, Horizontal = "Center", Vertical = "Center", Wrap = true }, false);
     }
 }

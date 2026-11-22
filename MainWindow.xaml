@@ -120,7 +120,7 @@
     </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/><RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <TitleBar x:Name="AppTitleBar" Height="40">
             <TitleBar.Resources>
@@ -130,7 +130,7 @@
             </TitleBar.Resources>
             <TitleBar.LeftHeader>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="自動保存" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                    <TextBlock Text="自動保存" FontSize="12" VerticalAlignment="Center" Margin="8,0,0,0"/>
                     <ToggleSwitch x:Name="AutoSaveToggle" OnContent="" OffContent="" MinWidth="0" Width="40" Margin="8,4,0,0"
                                   VerticalAlignment="Center" Toggled="AutoSaveToggle_Toggled"
                                   AutomationProperties.Name="自動保存">
@@ -170,7 +170,7 @@
                     <AppBarButton Label="名前を付けて保存" Icon="Save" Click="SaveAs_Click"/>
                     <AppBarButton Label="エクスポート" Icon="Share" Click="Export_Click"/>
                     <AppBarButton x:Name="RenameFileButton" Label="名前の変更" Icon="Rename" Click="RenameFile_Click" IsEnabled="False"/>
-                    <AppBarButton Label="パスのコピー" Icon="Copy" Click="CopyPath_Click"/>
+                    <AppBarButton x:Name="CopyPathButton" Label="パスのコピー" Icon="Copy" Click="CopyPath_Click" IsEnabled="False"/>
                 </CommandBar>
                 <ScrollViewer x:Name="HomeRibbon" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="ホームの操作">
                     <StackPanel Orientation="Horizontal" Padding="8,4" Spacing="8">
@@ -254,7 +254,7 @@
                     <AppBarButton Label="テーブル" Click="InsertTable_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE8A9;"/></AppBarButton.Icon></AppBarButton>
                     <AppBarSeparator/>
                     <AppBarButton Label="画像" Click="InsertPicture_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE8B9;"/></AppBarButton.Icon></AppBarButton>
-                    <AppBarButton Label="図形" Tag="insert" Click="ShapeGallery_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE8B3;"/></AppBarButton.Icon></AppBarButton>
+                    <AppBarButton Label="図形" Tag="insert" Click="ShapeGallery_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE710;"/></AppBarButton.Icon></AppBarButton>
                 </CommandBar>
                 <CommandBar x:Name="ViewRibbon" HorizontalAlignment="Left" Visibility="Collapsed" DefaultLabelPosition="Right">
                     <AppBarButton Label="前の行" Icon="Up" Click="Previous_Click"/>
@@ -267,6 +267,8 @@
                     <AppBarButton Label="図形の変更" Tag="change" Click="ShapeGallery_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE8B3;"/></AppBarButton.Icon></AppBarButton>
                     <AppBarButton Label="塗りつぶし" Tag="shapeFill" Click="ColorPalette_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE790;"/></AppBarButton.Icon></AppBarButton>
                     <AppBarButton Label="輪郭" Tag="shapeLine" Click="ColorPalette_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE70F;"/></AppBarButton.Icon></AppBarButton>
+                    <AppBarSeparator/>
+                    <AppBarButton Label="テキスト" Click="ShapeText_Click"><AppBarButton.Icon><FontIcon Glyph="&#xE8D2;"/></AppBarButton.Icon></AppBarButton>
                 </CommandBar>
             </Grid>
         </StackPanel>
@@ -290,27 +292,33 @@
             <ScrollBar x:Name="RowScroll" IndicatorMode="MouseIndicator" Grid.Column="1" Width="18" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{ThemeResource LayerFillColorDefaultBrush}" Orientation="Vertical" Minimum="1" Maximum="100" SmallChange="1" LargeChange="40" Value="1" ValueChanged="RowScroll_ValueChanged" AutomationProperties.Name="行をスクロール"/>
             <ScrollBar x:Name="ColumnScroll" IndicatorMode="MouseIndicator" Grid.Row="1" Height="18" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="{ThemeResource LayerFillColorDefaultBrush}" Orientation="Horizontal" Minimum="0" Maximum="26" SmallChange="0.1" LargeChange="24" ValueChanged="ColumnScroll_ValueChanged" AutomationProperties.Name="列をスクロール"/>
         </Grid>
-        <Border Grid.Row="4" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="6,0">
-            <ScrollViewer HorizontalScrollMode="Enabled" HorizontalScrollBarVisibility="Visible" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="シートタブをスクロール">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <SelectorBar x:Name="SheetTabs" Height="32" SelectionChanged="SheetTabs_SelectionChanged"/>
-                    <Button Style="{StaticResource ChromeIconButtonStyle}" Click="AddSheet_Click" AutomationProperties.Name="シートを追加" ToolTipService.ToolTip="シートを追加">
-                        <FontIcon Glyph="&#xE710;" FontSize="16"/>
-                    </Button>
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
-        <Border Grid.Row="5" MinHeight="28" Padding="12,5" BorderThickness="0,1,0,0"
-                Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
+        <Border Grid.Row="4" MinHeight="40" Background="{ThemeResource LayerFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="6,0">
             <Grid ColumnSpacing="6">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                <TextBlock x:Name="StatusText" Text="" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+                <ScrollViewer HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Auto" VerticalScrollMode="Disabled" VerticalScrollBarVisibility="Disabled" AutomationProperties.Name="シートタブをスクロール">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <SelectorBar x:Name="SheetTabs" Height="32" SelectionChanged="SheetTabs_SelectionChanged"/>
+                        <Button Style="{StaticResource ChromeIconButtonStyle}" Click="AddSheet_Click" AutomationProperties.Name="シートを追加" ToolTipService.ToolTip="シートを追加">
+                            <FontIcon Glyph="&#xE710;" FontSize="16"/>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
                     <Button Style="{StaticResource ChromeIconButtonStyle}" Click="ZoomOut_Click" AutomationProperties.Name="縮小" ToolTipService.ToolTip="縮小"><FontIcon Glyph="&#xE738;" FontSize="12"/></Button>
                     <Slider x:Name="ZoomSlider" Width="120" Minimum="50" Maximum="200" Value="100" StepFrequency="10" SmallChange="10" LargeChange="25" ValueChanged="ZoomSlider_ValueChanged" AutomationProperties.Name="表示倍率"/>
                     <Button Style="{StaticResource ChromeIconButtonStyle}" Click="ZoomIn_Click" AutomationProperties.Name="拡大" ToolTipService.ToolTip="拡大"><FontIcon Glyph="&#xE710;" FontSize="12"/></Button>
                     <Button x:Name="ZoomReset" Style="{StaticResource ChromeIconButtonStyle}" Content="100%" Click="ZoomReset_Click" AutomationProperties.Name="表示倍率を 100% に戻す" ToolTipService.ToolTip="表示倍率を 100% に戻す"/>
                 </StackPanel>
+            </Grid>
+        </Border>
+        <Border x:Name="StatusCard" Grid.Row="3" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" Padding="12,8" MaxWidth="420"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8" Visibility="Collapsed">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+                <Button Grid.Column="1" Style="{StaticResource ChromeIconButtonStyle}" Click="DismissStatus_Click" VerticalAlignment="Top"
+                        AutomationProperties.Name="通知を閉じる" ToolTipService.ToolTip="通知を閉じる"><FontIcon Glyph="&#xE711;" FontSize="12"/></Button>
             </Grid>
         </Border>
     </Grid>

@@ -33,12 +33,21 @@ sealed partial class WorksheetEngine
             }
             XElement? shape = anchor.Element(SheetDrawingNs + "sp"), picture = anchor.Element(SheetDrawingNs + "pic");
             XElement? transform = (shape ?? picture)?.Element(SheetDrawingNs + "spPr")?.Element(DrawingNs + "xfrm");
-            if (transform is not null && (((long?)transform.Attribute("rot") ?? 0) != 0 ||
-                (string?)transform.Attribute("flipH") is "1" or "true" || (string?)transform.Attribute("flipV") is "1" or "true"))
+            bool isLine = (string?)shape?.Element(SheetDrawingNs + "spPr")?.Element(DrawingNs + "prstGeom")?
+                .Attribute("prst") == "line";
+            bool flipH = (string?)transform?.Attribute("flipH") is "1" or "true";
+            bool flipV = (string?)transform?.Attribute("flipV") is "1" or "true";
+            if (!isLine && (flipH || flipV))
             {
                 skipped++;
                 continue;
             }
+            double rotation = ((long?)transform?.Attribute("rot") ?? 0) / 60000.0;
+            if (isLine) flipV ^= flipH;
+            double cropLeft = 0, cropTop = 0, cropRight = 0, cropBottom = 0;
+            bool textBold = false, textItalic = false, textUnderline = false;
+            double textSize = 14;
+            uint textColor = 0xffffff;
             string kind, type = "", text = "";
             uint? fill = null, line = null;
             string? data = null;
@@ -69,12 +78,26 @@ sealed partial class WorksheetEngine
                 IEnumerable<XElement> paragraphs = shape.Element(SheetDrawingNs + "txBody")?.Elements(DrawingNs + "p") ?? [];
                 text = string.Join('\n',
                     paragraphs.Select(paragraph => string.Concat(paragraph.Descendants(DrawingNs + "t").Select(node => node.Value))));
+                XElement? runProperties = paragraphs.SelectMany(paragraph => paragraph.Descendants(DrawingNs + "rPr")).FirstOrDefault();
+                if (runProperties is not null)
+                {
+                    textBold = (string?)runProperties.Attribute("b") is "1" or "true";
+                    textItalic = (string?)runProperties.Attribute("i") is "1" or "true";
+                    textUnderline = (string?)runProperties.Attribute("u") is string underline && underline != "none";
+                    if ((int?)runProperties.Attribute("sz") is int size) textSize = Math.Clamp(size / 75.0, 4, 400);
+                    textColor = ImportDrawingColor(runProperties, 0xffffff) ?? 0xffffff;
+                }
                 kind = "shape";
             }
             else if (picture is not null)
             {
                 XElement? fillElement = picture.Element(SheetDrawingNs + "blipFill");
-                if (fillElement?.Element(DrawingNs + "srcRect") is not null)
+                XElement? crop = fillElement?.Element(DrawingNs + "srcRect");
+                cropLeft = ((int?)crop?.Attribute("l") ?? 0) / 100000.0;
+                cropTop = ((int?)crop?.Attribute("t") ?? 0) / 100000.0;
+                cropRight = ((int?)crop?.Attribute("r") ?? 0) / 100000.0;
+                cropBottom = ((int?)crop?.Attribute("b") ?? 0) / 100000.0;
+                if (cropLeft < 0 || cropTop < 0 || cropRight < 0 || cropBottom < 0 || cropLeft + cropRight >= 1 || cropTop + cropBottom >= 1)
                 {
                     skipped++;
                     continue;
@@ -120,7 +143,8 @@ sealed partial class WorksheetEngine
             }
             (col, dx) = NormalizeDrawingPosition(col, dx, widths, 100, 16383);
             (row, dy) = NormalizeDrawingPosition(row, dy, heights, 24, 1048575);
-            sheet.Objects.Add(new((uint)(sheet.Objects.Count + 1), kind, type, row, col, dx, dy, width, height, fill, line, text, data));
+            sheet.Objects.Add(new((uint)(sheet.Objects.Count + 1), kind, type, row, col, dx, dy, width, height, fill, line, text, data,
+                rotation, cropLeft, cropTop, cropRight, cropBottom, flipV, textBold, textItalic, textUnderline, textSize, textColor));
             imported++;
         }
         return (imported, skipped);
@@ -180,6 +204,15 @@ sealed partial class WorksheetEngine
             width = cx / EmuPerPixel;
             height = cy / EmuPerPixel;
         }
-        return double.IsFinite(width) && double.IsFinite(height) && width is >= 4 and <= 10000 && height is >= 4 and <= 10000;
+        bool isLine = (string?)anchor.Element(SheetDrawingNs + "sp")?.Element(SheetDrawingNs + "spPr")?
+            .Element(DrawingNs + "prstGeom")?.Attribute("prst") == "line";
+        if (isLine && width >= 0 && height >= 0)
+        {
+            width = Math.Max(.01, width);
+            height = Math.Max(.01, height);
+        }
+        double minimum = isLine ? .01 : 4;
+        return double.IsFinite(width) && double.IsFinite(height) && width >= minimum && width <= 10000 &&
+            height >= minimum && height <= 10000;
     }
 }

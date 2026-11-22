@@ -36,6 +36,7 @@ sealed partial class WorksheetEngine : IWorksheetDataSource
         {
             "sheet.viewport" => Viewport(args),
             "sheet.picture" => ReadPicture(args),
+            "sheet.shape" => ShapeView(FindDrawing("shape", args.GetProperty("id").GetUInt32()), 0, 0),
             "sheet.nextVisibleRow" => NextVisibleRow(args),
             "sheet.resolveVisibleRow" => ResolveVisibleRow(args),
             "file.rename" => RenameFile(args),
@@ -122,6 +123,8 @@ sealed partial class WorksheetEngine : IWorksheetDataSource
             case "chart.shapeFill":
             case "chart.shapeOutline":
             case "object.move":
+            case "object.transform":
+            case "image.crop":
             case "object.duplicate":
             case "object.delete":
             case "arrange.bringForward":

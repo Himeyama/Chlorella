@@ -11,6 +11,7 @@ public sealed partial class MainWindow
         statusTimer.Stop();
         statusTimer.Tick -= StatusTimer_Tick;
         StatusText.Text = message;
+        StatusCard.Visibility = message.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (message.Length == 0) return;
         statusTimer.Tick += StatusTimer_Tick;
         statusTimer.Start();
@@ -20,5 +21,7 @@ public sealed partial class MainWindow
     {
         statusTimer.Stop();
         StatusText.Text = "";
+        StatusCard.Visibility = Visibility.Collapsed;
     }
+    void DismissStatus_Click(object sender, RoutedEventArgs e) => SetStatus("");
 }

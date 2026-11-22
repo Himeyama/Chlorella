@@ -12,6 +12,7 @@ public sealed partial class MainWindow
     {
         JsonElement info = await ExecuteAsync("document.inspect", new { });
         RenameFileButton.IsEnabled = info.GetProperty("path").ValueKind == JsonValueKind.String;
+        CopyPathButton.IsEnabled = RenameFileButton.IsEnabled;
         int active = info.GetProperty("activeSheet").GetInt32();
         bool canDeleteSheet = info.GetProperty("sheets").GetArrayLength() > 1;
         string state = JsonSerializer.Serialize(new

@@ -209,6 +209,7 @@ public sealed partial class MainWindow
         savedPath = path;
         displayFileName = Path.GetFileName(path);
         RenameFileButton.IsEnabled = true;
+        CopyPathButton.IsEnabled = true;
         dirty = false;
         await ShowSaveResultAsync(saved);
     }

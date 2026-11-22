@@ -56,7 +56,12 @@ sealed partial class WorksheetEngine
         {
             if (hiddenRows.Contains(item.Row)) continue;
             double x = columns.At(item.Col) - originX + item.Dx, y = rows.At(item.Row) - originY + item.Dy;
-            if (x < viewportWidth && x + item.Width > 0 && y < viewportHeight && y + item.Height > 0) visible.Add((item, x, y));
+            double angle = item.Rotation * Math.PI / 180;
+            double boundWidth = Math.Abs(item.Width * Math.Cos(angle)) + Math.Abs(item.Height * Math.Sin(angle));
+            double boundHeight = Math.Abs(item.Width * Math.Sin(angle)) + Math.Abs(item.Height * Math.Cos(angle));
+            double leftEdge = x + (item.Width - boundWidth) / 2, topEdge = y + (item.Height - boundHeight) / 2;
+            if (leftEdge < viewportWidth && leftEdge + boundWidth > 0 && topEdge < viewportHeight && topEdge + boundHeight > 0)
+                visible.Add((item, x, y));
         }
         return visible;
     }

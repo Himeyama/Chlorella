@@ -34,6 +34,8 @@ sealed partial class WorksheetEngine
                     new XAttribute("cy", (long)Math.Round(item.Height * EmuPerPixel))));
             if (item.Kind == "image")
             {
+                (int cropLeft, int cropRight) = NativeCropPair(item.CropLeft, item.CropRight);
+                (int cropTop, int cropBottom) = NativeCropPair(item.CropTop, item.CropBottom);
                 byte[] bytes = Convert.FromBase64String(item.Data ?? "");
                 string extension = bytes.Length >= 8 && bytes[0] == 137 && bytes[1] == 80 ? "png" : "jpg";
                 string name = $"image{number}_{++imageNumber}.{extension}", relationship = $"rId{imageNumber}";
@@ -46,7 +48,9 @@ sealed partial class WorksheetEngine
                             new XElement(SheetDrawingNs + "cNvPicPr", new XElement(DrawingNs + "picLocks",
                                 new XAttribute("noChangeAspect", 1)))),
                     new XElement(SheetDrawingNs + "blipFill", new XElement(DrawingNs + "blip",
-                        new XAttribute(RelNs + "embed", relationship)), new XElement(DrawingNs + "stretch",
+                        new XAttribute(RelNs + "embed", relationship)), new XElement(DrawingNs + "srcRect",
+                            new XAttribute("l", cropLeft), new XAttribute("t", cropTop),
+                            new XAttribute("r", cropRight), new XAttribute("b", cropBottom)), new XElement(DrawingNs + "stretch",
                             new XElement(DrawingNs + "fillRect"))),
                     new XElement(SheetDrawingNs + "spPr", NativeTransform(item), new XElement(DrawingNs + "prstGeom",
                         new XAttribute("prst", "rect"), new XElement(DrawingNs + "avLst")))));
@@ -57,6 +61,13 @@ sealed partial class WorksheetEngine
         }
         WriteXml(zip, $"xl/drawings/drawing{number}.xml", new XDocument(drawing));
         if (imageNumber > 0) WriteXml(zip, $"xl/drawings/_rels/drawing{number}.xml.rels", new XDocument(relationships));
+    }
+
+    static (int First, int Second) NativeCropPair(double first, double second)
+    {
+        int firstValue = Math.Min(99999, (int)Math.Round(first * 100000));
+        int secondValue = Math.Min(99999 - firstValue, (int)Math.Round(second * 100000));
+        return (firstValue, secondValue);
     }
 
     static (int Index, double Offset) NormalizeDrawingPosition(int index, double offset, Dictionary<int, double> sizes,
@@ -100,16 +111,28 @@ sealed partial class WorksheetEngine
                 new XAttribute("name", $"Shape {item.Id}")), new XElement(SheetDrawingNs + "cNvSpPr")),
             new XElement(SheetDrawingNs + "spPr", NativeTransform(item), new XElement(DrawingNs + "prstGeom",
                 new XAttribute("prst", geometry), new XElement(DrawingNs + "avLst")), fill, new XElement(DrawingNs + "ln", lineFill)),
-            new XElement(SheetDrawingNs + "txBody", new XElement(DrawingNs + "bodyPr", new XAttribute("anchor", "ctr")),
-                new XElement(DrawingNs + "lstStyle"), new XElement(DrawingNs + "p", new XElement(DrawingNs + "pPr",
-                    new XAttribute("algn", "ctr")), new XElement(DrawingNs + "r", new XElement(DrawingNs + "rPr",
-                        new XAttribute("lang", "ja-JP"), new XElement(DrawingNs + "solidFill",
-                            new XElement(DrawingNs + "srgbClr", new XAttribute("val", "FFFFFF")))),
-                                new XElement(DrawingNs + "t", item.Text)), new XElement(DrawingNs + "endParaRPr",
-                                    new XAttribute("lang", "ja-JP")))));
+            NativeShapeText(item));
     }
 
-    static XElement NativeTransform(DrawingObject item) => new(DrawingNs + "xfrm", new XElement(DrawingNs + "off",
+    static XElement NativeShapeText(DrawingObject item)
+    {
+        XElement body = new(SheetDrawingNs + "txBody", new XElement(DrawingNs + "bodyPr", new XAttribute("anchor", "ctr")),
+            new XElement(DrawingNs + "lstStyle"));
+        foreach (string line in item.Text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            body.Add(new XElement(DrawingNs + "p", new XElement(DrawingNs + "pPr", new XAttribute("algn", "ctr")),
+                new XElement(DrawingNs + "r", new XElement(DrawingNs + "rPr", new XAttribute("lang", "ja-JP"),
+                    new XAttribute("b", item.TextBold ? 1 : 0), new XAttribute("i", item.TextItalic ? 1 : 0),
+                    new XAttribute("u", item.TextUnderline ? "sng" : "none"),
+                    new XAttribute("sz", (int)Math.Round(item.TextSize * .75 * 100)), new XElement(DrawingNs + "solidFill",
+                        new XElement(DrawingNs + "srgbClr", new XAttribute("val", $"{item.TextColor:X6}")))),
+                    new XElement(DrawingNs + "t", new XAttribute(XNamespace.Xml + "space", "preserve"), line)),
+                new XElement(DrawingNs + "endParaRPr", new XAttribute("lang", "ja-JP"))));
+        return body;
+    }
+
+    static XElement NativeTransform(DrawingObject item) => new(DrawingNs + "xfrm",
+        new XAttribute("rot", (int)Math.Round(((item.Rotation % 360 + 360) % 360) * 60000)),
+        item.FlipV ? new XAttribute("flipV", 1) : null, new XElement(DrawingNs + "off",
         new XAttribute("x", 0), new XAttribute("y", 0)), new XElement(DrawingNs + "ext", new XAttribute("cx",
             (long)Math.Round(item.Width * EmuPerPixel)), new XAttribute("cy", (long)Math.Round(item.Height * EmuPerPixel))));
 }

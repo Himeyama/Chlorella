@@ -28,8 +28,11 @@ sealed partial class WorksheetEngine
         for (int col = 0; col <= maxCol; col++) colEdges.Add(colEdges[^1] + ColumnWidth(col));
         foreach (DrawingObject drawing in Current.Objects)
         {
-            double right = colEdges[drawing.Col] + drawing.Dx + drawing.Width;
-            double bottom = rowEdges[drawing.Row] + drawing.Dy + drawing.Height;
+            double angle = drawing.Rotation * Math.PI / 180;
+            double boundWidth = Math.Abs(drawing.Width * Math.Cos(angle)) + Math.Abs(drawing.Height * Math.Sin(angle));
+            double boundHeight = Math.Abs(drawing.Width * Math.Sin(angle)) + Math.Abs(drawing.Height * Math.Cos(angle));
+            double right = colEdges[drawing.Col] + drawing.Dx + (drawing.Width + boundWidth) / 2;
+            double bottom = rowEdges[drawing.Row] + drawing.Dy + (drawing.Height + boundHeight) / 2;
             while (colEdges[^1] < right && colEdges.Count <= 16384) colEdges.Add(colEdges[^1] + ColumnWidth(colEdges.Count - 1));
             while (rowEdges[^1] < bottom && rowEdges.Count <= 1048576) rowEdges.Add(rowEdges[^1] + RowHeight(rowEdges.Count - 1));
         }
@@ -78,10 +81,25 @@ sealed partial class WorksheetEngine
                     double x = 36 + (colEdges[item.Col] + item.Dx - colPage.Start) * PdfScale;
                     double y = 806 - (rowEdges[item.Row] + item.Dy - rowPage.Start) * PdfScale;
                     double width = item.Width * PdfScale, height = item.Height * PdfScale;
-                    if (x + width <= 36 || x >= 36 + pageWidth || y <= 806 - pageHeight || y - height >= 806) continue;
-                    if (item.Kind == "image") content.AppendFormat(CultureInfo.InvariantCulture,
-                        "q {0:F3} 0 0 {1:F3} {2:F3} {3:F3} cm /Im{4} Do Q\n", width, height, x, y - height, item.Id);
+                    double angle = -item.Rotation * Math.PI / 180, cos = Math.Cos(angle), sin = Math.Sin(angle);
+                    double cx = x + width / 2, cy = y - height / 2;
+                    double boundWidth = Math.Abs(width * cos) + Math.Abs(height * sin),
+                        boundHeight = Math.Abs(width * sin) + Math.Abs(height * cos);
+                    if (cx + boundWidth / 2 <= 36 || cx - boundWidth / 2 >= 36 + pageWidth ||
+                        cy + boundHeight / 2 <= 806 - pageHeight || cy - boundHeight / 2 >= 806) continue;
+                    content.AppendFormat(CultureInfo.InvariantCulture, "q {0:F6} {1:F6} {2:F6} {0:F6} {3:F3} {4:F3} cm\n",
+                        cos, sin, -sin, cx - cos * cx + sin * cy, cy - sin * cx - cos * cy);
+                    if (item.Kind == "image")
+                    {
+                        double imageWidth = width / (1 - item.CropLeft - item.CropRight);
+                        double imageHeight = height / (1 - item.CropTop - item.CropBottom);
+                        content.AppendFormat(CultureInfo.InvariantCulture,
+                            "q {0:F3} {1:F3} {2:F3} {3:F3} re W n {4:F3} 0 0 {5:F3} {6:F3} {7:F3} cm /Im{8} Do Q\n",
+                            x, y - height, width, height, imageWidth, imageHeight, x - item.CropLeft * imageWidth,
+                            y - height - item.CropBottom * imageHeight, item.Id);
+                    }
                     else PdfShape(content, item, x, y, width, height);
+                    content.Append("Q\n");
                 }
                 content.Append("Q\n");
                 pages.Add(content.ToString());
@@ -113,15 +131,6 @@ sealed partial class WorksheetEngine
     static void SetColor(StringBuilder content, uint color,
         bool stroke) => content.AppendFormat(CultureInfo.InvariantCulture, "{0:F3} {1:F3} {2:F3} {3}\n",
             ((color >> 16) & 255) / 255d, ((color >> 8) & 255) / 255d, (color & 255) / 255d, stroke ? "RG" : "rg");
-    static void PdfText(StringBuilder content, string value, double x, double y, double width, double height, uint color, double size)
-    {
-        content.AppendFormat(CultureInfo.InvariantCulture, "q {0:F3} {1:F3} {2:F3} {3:F3} re W n\n", x + 2, y - height + 1,
-            Math.Max(0, width - 4), Math.Max(0, height - 2));
-        SetColor(content, color, false);
-        PdfDrawText(content, value, x + 3, y - Math.Min(height - 2, size + 3), size, false, false);
-        content.Append("Q\n");
-    }
-
     static void WritePdf(string path, List<string> pages, Dictionary<uint, PdfImage> images)
     {
         List<string> objects = ["<< /Type /Catalog /Pages 2 0 R >>", "",
